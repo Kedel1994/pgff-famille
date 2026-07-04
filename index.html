@@ -1,0 +1,2239 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PGFF — Plateforme de Gestion Financière Familiale</title>
+
+<!-- ============================================================
+  CONFIGURATION FIREBASE — À REMPLIR AVANT DÉPLOIEMENT
+  1. Aller sur https://console.firebase.google.com → Créer un projet (ex: "pgff-salem")
+  2. Activer Authentication → méthode "E-mail/Mot de passe"
+  3. Créer une base Firestore (mode production)
+  4. Dans Paramètres du projet → Vos applications → Ajouter une appli Web
+  5. Copier la config ci-dessous, remplacer FIREBASE_CONFIG
+  6. Coller les règles de sécurité fournies dans firestore.rules (fichier séparé)
+============================================================= -->
+<script>
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAzFHe8qX6IUSd3Ut1LiAZrUx_iWECRlaA",
+    authDomain: "pgff-famille.firebaseapp.com",
+    projectId: "pgff-famille",
+    storageBucket: "pgff-famille.firebasestorage.app",
+    messagingSenderId: "113600817513",
+    appId: "1:113600817513:web:d2fcb38dcf6c35b05175f8"
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+:root{
+  --navy:#10192B;
+  --navy-2:#16223A;
+  --navy-3:#1D2C4B;
+  --cream:#F6F1E7;
+  --cream-dim:#C9C3B4;
+  --gold:#C9A227;
+  --sage:#4C7A5C;
+  --sage-2:#6FA07F;
+  --clay:#B5563C;
+  --clay-2:#D97757;
+  --line:rgba(246,241,231,0.12);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--navy);
+  color:var(--cream);
+  font-family:'Inter',sans-serif;
+  min-height:100vh;
+}
+h1,h2,h3,.display{
+  font-family:'Fraunces',serif;
+  letter-spacing:-0.01em;
+}
+.num{ font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; }
+::selection{ background:var(--gold); color:var(--navy); }
+a{color:inherit;}
+
+/* ---------- layout shells ---------- */
+#app{ display:none; min-height:100vh; }
+#app.ready{ display:flex; }
+
+.sidebar{
+  width:230px; flex-shrink:0;
+  background:var(--navy-2);
+  border-right:1px solid var(--line);
+  padding:24px 14px;
+  display:flex; flex-direction:column; gap:4px;
+  position:sticky; top:0; height:100vh; overflow-y:auto;
+}
+.sidebar .brand{
+  font-family:'Fraunces',serif; font-weight:600; font-size:19px;
+  padding:0 10px 20px 10px; color:var(--cream);
+  border-bottom:1px solid var(--line); margin-bottom:14px;
+}
+.sidebar .brand small{ display:block; font-family:'Inter',sans-serif; font-size:11px; color:var(--cream-dim); font-weight:400; margin-top:2px; letter-spacing:0.04em; text-transform:uppercase; }
+.nav-item{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px; border-radius:8px; cursor:pointer;
+  font-size:14px; color:var(--cream-dim); transition:.15s;
+  border-left:2px solid transparent;
+}
+.nav-item:hover{ background:var(--navy-3); color:var(--cream); }
+.nav-item.active{ background:var(--navy-3); color:var(--gold); border-left:2px solid var(--gold); }
+.nav-item .ic{ width:18px; text-align:center; opacity:.9; }
+.nav-section-label{ font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--cream-dim); padding:14px 12px 4px; opacity:.6;}
+
+.main{ flex:1; min-width:0; padding:26px 30px 60px; }
+.topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
+.topbar .who{ font-size:13px; color:var(--cream-dim); }
+.btn{
+  font-family:'Inter',sans-serif; font-weight:600; font-size:13px;
+  padding:9px 16px; border-radius:8px; border:1px solid var(--line);
+  background:var(--navy-3); color:var(--cream); cursor:pointer;
+  transition:.15s;
+}
+.btn:hover{ border-color:var(--gold); }
+.btn-gold{ background:var(--gold); color:var(--navy); border:none; }
+.btn-gold:hover{ filter:brightness(1.08); }
+.btn-ghost{ background:transparent; }
+.btn-danger{ background:var(--clay); color:var(--cream); border:none; }
+
+/* ---------- cards / grid ---------- */
+.grid{ display:grid; gap:14px; }
+.g4{ grid-template-columns:repeat(4,1fr); }
+.g3{ grid-template-columns:repeat(3,1fr); }
+.g2{ grid-template-columns:repeat(2,1fr); }
+@media (max-width:900px){ .g4{grid-template-columns:repeat(2,1fr);} .g3{grid-template-columns:repeat(2,1fr);} .g2{grid-template-columns:1fr;} }
+
+.card{
+  background:var(--navy-2); border:1px solid var(--line); border-radius:12px;
+  padding:18px 20px;
+}
+.card .label{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--cream-dim); margin-bottom:8px; }
+.card .value{ font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; }
+.value.pos{ color:var(--sage-2); }
+.value.neg{ color:var(--clay-2); }
+.value.neutral{ color:var(--gold); }
+
+/* signature: balance ribbon */
+.ribbon-wrap{ margin:6px 0 24px; }
+.ribbon-title{ font-size:12px; color:var(--cream-dim); margin-bottom:8px; display:flex; justify-content:space-between; }
+.ribbon{ height:26px; border-radius:6px; overflow:hidden; display:flex; border:1px solid var(--line); background:var(--navy-3);}
+.ribbon .seg{ height:100%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; color:var(--navy); white-space:nowrap; overflow:hidden; }
+.ribbon .seg.mari{ background:var(--sage-2); }
+.ribbon .seg.femme{ background:var(--gold); }
+.ribbon .seg.commun{ background:var(--clay-2); color:var(--cream); }
+.legend{ display:flex; gap:16px; margin-top:8px; font-size:12px; color:var(--cream-dim); }
+.legend .dot{ width:9px; height:9px; border-radius:2px; display:inline-block; margin-right:5px; }
+
+/* ---------- section header ---------- */
+.section-head{ display:flex; justify-content:space-between; align-items:center; margin:30px 0 12px; }
+.section-head h2{ font-size:19px; margin:0; font-weight:600; }
+.section-head .hint{ font-size:12px; color:var(--cream-dim); }
+
+/* ---------- ledger table ---------- */
+.ledger{ width:100%; border-collapse:collapse; }
+.ledger th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--cream-dim); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line); }
+.ledger td{ padding:10px 10px; border-bottom:1px solid var(--line); font-size:13.5px; }
+.ledger tr:hover td{ background:rgba(246,241,231,0.02); }
+.ledger td.num, .ledger th.num{ font-family:'JetBrains Mono',monospace; text-align:right; }
+.tag{ font-size:10.5px; padding:2px 8px; border-radius:20px; border:1px solid var(--line); color:var(--cream-dim); }
+.tag.mari{ color:var(--sage-2); border-color:var(--sage-2); }
+.tag.femme{ color:var(--gold); border-color:var(--gold); }
+.tag.commun{ color:var(--clay-2); border-color:var(--clay-2); }
+.empty-row{ text-align:center; color:var(--cream-dim); padding:26px; font-size:13px; }
+
+/* ---------- forms / modal ---------- */
+.overlay{ position:fixed; inset:0; background:rgba(9,13,22,.72); display:none; align-items:flex-start; justify-content:center; z-index:50; padding:40px 16px; overflow-y:auto;}
+.overlay.show{ display:flex; }
+.modal{ background:var(--navy-2); border:1px solid var(--line); border-radius:14px; width:100%; max-width:480px; padding:24px; }
+.modal h3{ margin:0 0 16px; font-size:18px; }
+.field{ margin-bottom:14px; }
+.field label{ display:block; font-size:12px; color:var(--cream-dim); margin-bottom:6px; }
+.field input, .field select, .field textarea{
+  width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+  background:var(--navy); color:var(--cream); font-family:'Inter',sans-serif; font-size:13.5px;
+}
+.field input:focus, .field select:focus, .field textarea:focus{ outline:none; border-color:var(--gold); }
+.field-row{ display:flex; gap:10px; }
+.field-row .field{ flex:1; }
+.modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+
+/* ---------- auth screens ---------- */
+#authScreen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+.auth-box{ width:100%; max-width:400px; }
+.auth-box .brand-lg{ font-family:'Fraunces',serif; font-size:30px; font-weight:600; text-align:center; margin-bottom:4px; }
+.auth-box .brand-sub{ text-align:center; color:var(--cream-dim); font-size:13px; margin-bottom:28px; }
+.auth-card{ background:var(--navy-2); border:1px solid var(--line); border-radius:14px; padding:26px; }
+.auth-tabs{ display:flex; gap:6px; margin-bottom:20px; }
+.auth-tab{ flex:1; text-align:center; padding:8px; font-size:12.5px; border-radius:8px; cursor:pointer; color:var(--cream-dim); border:1px solid transparent;}
+.auth-tab.active{ background:var(--navy-3); color:var(--gold); border-color:var(--line); }
+.auth-err{ background:rgba(181,86,60,.15); border:1px solid var(--clay); color:var(--clay-2); font-size:12.5px; padding:9px 12px; border-radius:8px; margin-bottom:14px; display:none; }
+.auth-msg{ background:rgba(76,122,92,.15); border:1px solid var(--sage); color:var(--sage-2); font-size:12.5px; padding:9px 12px; border-radius:8px; margin-bottom:14px; display:none; }
+.link-btn{ background:none; border:none; color:var(--gold); font-size:12.5px; cursor:pointer; padding:0; }
+
+/* loader */
+#loader{ position:fixed; inset:0; background:var(--navy); display:flex; align-items:center; justify-content:center; z-index:100; }
+.spinner{ width:34px; height:34px; border:3px solid var(--line); border-top-color:var(--gold); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin{ to{ transform:rotate(360deg);} }
+
+.mono-badge{ font-family:'JetBrains Mono',monospace; background:var(--navy); border:1px dashed var(--line); padding:8px 10px; border-radius:8px; font-size:13px; word-break:break-all; }
+.small-note{ font-size:11.5px; color:var(--cream-dim); margin-top:6px; }
+</style>
+</head>
+<body>
+
+<div id="loader"><div class="spinner"></div></div>
+
+<!-- ============== ÉCRAN AUTHENTIFICATION ============== -->
+<div id="authScreen" style="display:none;">
+  <div class="auth-box">
+    <div class="brand-lg">PGFF</div>
+    <div class="brand-sub">Plateforme de Gestion Financière Familiale</div>
+
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <div class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">Connexion</div>
+        <div class="auth-tab" data-tab="join" onclick="switchAuthTab('join')">Rejoindre un foyer</div>
+        <div class="auth-tab" data-tab="admin" onclick="switchAuthTab('admin')">Super Admin</div>
+      </div>
+
+      <div class="auth-err" id="authErr"></div>
+      <div class="auth-msg" id="authMsg"></div>
+
+      <!-- LOGIN -->
+      <div id="tab-login">
+        <div class="field"><label>Adresse e-mail</label><input type="email" id="loginEmail" placeholder="vous@exemple.com"></div>
+        <div class="field"><label>Mot de passe</label><input type="password" id="loginPass" placeholder="••••••••"></div>
+        <button class="btn btn-gold" style="width:100%" onclick="doLogin()">Se connecter</button>
+      </div>
+
+      <!-- JOIN (couple registration via token) -->
+      <div id="tab-join" style="display:none;">
+        <p class="small-note" style="margin-bottom:14px;">Utilisez le lien d'invitation reçu du super administrateur, ou collez le code d'inscription de votre foyer ci-dessous.</p>
+        <div class="field"><label>Code d'inscription du foyer</label><input type="text" id="joinToken" placeholder="Ex: PGFF-8X3K2Q"></div>
+        <div class="field"><label>Votre rôle dans le foyer</label>
+          <select id="joinRole">
+            <option value="mari">Époux</option>
+            <option value="femme">Épouse</option>
+            <option value="comptable">Comptable</option>
+          </select>
+        </div>
+        <div class="field"><label>Votre nom complet</label><input type="text" id="joinNom" placeholder="Nom et prénom"></div>
+        <div class="field"><label>Adresse e-mail</label><input type="email" id="joinEmail" placeholder="vous@exemple.com"></div>
+        <div class="field"><label>Créer un mot de passe</label><input type="password" id="joinPass" placeholder="6 caractères minimum"></div>
+        <button class="btn btn-gold" style="width:100%" onclick="doJoin()">Créer mon compte</button>
+      </div>
+
+      <!-- SUPER ADMIN -->
+      <div id="tab-admin" style="display:none;">
+        <p class="small-note" style="margin-bottom:14px;">Accès réservé à l'administration de la plateforme. Aucune donnée financière des foyers n'est visible depuis cet espace.</p>
+        <div class="field"><label>Adresse e-mail</label><input type="email" id="adminEmail" placeholder="admin@exemple.com"></div>
+        <div class="field"><label>Mot de passe</label><input type="password" id="adminPass" placeholder="••••••••"></div>
+        <button class="btn" style="width:100%" onclick="doAdminLogin()">Connexion super admin</button>
+        <p class="small-note">Premier lancement ? <button class="link-btn" onclick="bootstrapAdmin()">Initialiser le compte super admin</button></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============== APPLICATION ============== -->
+<div id="app">
+  <div class="sidebar" id="sidebar">
+    <div class="brand">PGFF <small>Gestion Financière Familiale</small></div>
+    <div id="navItems"></div>
+    <div style="flex:1"></div>
+    <div class="nav-item" onclick="doLogout()"><span class="ic">⏻</span> Déconnexion</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <h1 class="display" id="pageTitle" style="margin:0;font-size:22px;">Tableau de bord</h1>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="position:relative;">
+          <button class="btn btn-ghost" style="padding:8px 12px;" onclick="toggleNotifPanel()">🔔 <span id="notifCount"></span></button>
+          <div id="notifPanel" style="display:none;position:absolute;right:0;top:42px;width:320px;max-height:400px;overflow-y:auto;background:var(--navy-2);border:1px solid var(--line);border-radius:10px;padding:10px;z-index:40;"></div>
+        </div>
+        <div class="who" id="whoBadge"></div>
+      </div>
+    </div>
+    <div id="viewRoot"></div>
+  </div>
+</div>
+
+<!-- ============== SUPER ADMIN PANEL (separate shell) ============== -->
+<div id="adminApp" style="display:none; min-height:100vh; padding:30px;">
+  <div class="topbar">
+    <div>
+      <h1 class="display" style="margin:0;font-size:22px;">Console Super Administrateur</h1>
+      <p class="small-note">Gestion des foyers uniquement — aucun accès aux données financières.</p>
+    </div>
+    <button class="btn" onclick="doLogout()">Déconnexion</button>
+  </div>
+  <div class="section-head">
+    <h2>Foyers enregistrés</h2>
+    <button class="btn btn-gold" onclick="openNewFoyerModal()">+ Enregistrer un couple</button>
+  </div>
+  <table class="ledger" style="margin-top:10px;">
+    <thead><tr><th>Foyer</th><th>Statut</th><th>Créé le</th><th>Code d'inscription</th><th></th></tr></thead>
+    <tbody id="foyersTbody"></tbody>
+  </table>
+</div>
+
+<div id="recaptcha-container"></div>
+
+<!-- ============== MODAL GÉNÉRIQUE ============== -->
+<div class="overlay" id="overlay">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<script>
+/* ==========================================================
+   INITIALISATION FIREBASE
+========================================================== */
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let currentUser = null;   // { uid, role, foyerId, nom, email }
+let currentView = 'dashboard';
+let unsubscribers = [];   // firestore listeners to detach on logout
+let cache = { revenus:[], depenses:[], dettes:[], epargnes:[], dons:[], effets:[], sol:[], objectifs:[], investissements:[], budgets:[], patrimoineHistorique:[], activites:[], notifications:[] };
+
+/* ==========================================================
+   UTILITAIRES
+========================================================== */
+function fmt(n){
+  const v = Number(n||0);
+  return v.toLocaleString('fr-HT', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function genToken(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let t = 'PGFF-';
+  for(let i=0;i<6;i++) t += chars[Math.floor(Math.random()*chars.length)];
+  return t;
+}
+function showErr(msg){ const e=document.getElementById('authErr'); e.textContent=msg; e.style.display='block'; document.getElementById('authMsg').style.display='none'; }
+function showMsg(msg){ const e=document.getElementById('authMsg'); e.textContent=msg; e.style.display='block'; document.getElementById('authErr').style.display='none'; }
+function clearAuthNotices(){ document.getElementById('authErr').style.display='none'; document.getElementById('authMsg').style.display='none'; }
+
+function switchAuthTab(tab){
+  clearAuthNotices();
+  ['login','join','admin'].forEach(t=>{
+    document.getElementById('tab-'+t).style.display = t===tab ? 'block':'none';
+    document.querySelector(`.auth-tab[data-tab="${t}"]`).classList.toggle('active', t===tab);
+  });
+}
+
+function closeModal(){ document.getElementById('overlay').classList.remove('show'); document.getElementById('modalBody').innerHTML=''; }
+function openModal(html){ document.getElementById('modalBody').innerHTML = html; document.getElementById('overlay').classList.add('show'); }
+
+/* ==========================================================
+   AUTHENTIFICATION — FOYER (mari / femme / comptable)
+========================================================== */
+async function doLogin(){
+  clearAuthNotices();
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  if(!email || !pass){ showErr('Veuillez remplir tous les champs.'); return; }
+  try{
+    await auth.signInWithEmailAndPassword(email, pass);
+  }catch(e){ showErr(traduireErreur(e)); }
+}
+
+async function doJoin(){
+  clearAuthNotices();
+  const token = document.getElementById('joinToken').value.trim().toUpperCase();
+  const role = document.getElementById('joinRole').value;
+  const nom = document.getElementById('joinNom').value.trim();
+  const email = document.getElementById('joinEmail').value.trim();
+  const pass = document.getElementById('joinPass').value;
+  if(!token || !nom || !email || !pass){ showErr('Veuillez remplir tous les champs.'); return; }
+  if(pass.length < 6){ showErr('Le mot de passe doit contenir au moins 6 caractères.'); return; }
+
+  try{
+    const q = await db.collection('foyers').where('tokenInscription','==',token).limit(1).get();
+    if(q.empty){ showErr("Code d'inscription invalide."); return; }
+    const foyerDoc = q.docs[0];
+    const foyerData = foyerDoc.data();
+    if(foyerData.statut !== 'actif'){ showErr('Ce foyer est actuellement suspendu. Contactez le super administrateur.'); return; }
+
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    await db.collection('users').doc(cred.user.uid).set({
+      role: role,
+      foyerId: foyerDoc.id,
+      nom: nom,
+      email: email,
+      dateCreation: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // l'écouteur onAuthStateChanged prendra le relais
+  }catch(e){ showErr(traduireErreur(e)); }
+}
+
+/* ==========================================================
+   AUTHENTIFICATION — SUPER ADMIN
+========================================================== */
+async function doAdminLogin(){
+  clearAuthNotices();
+  const email = document.getElementById('adminEmail').value.trim();
+  const pass = document.getElementById('adminPass').value;
+  if(!email || !pass){ showErr('Veuillez remplir tous les champs.'); return; }
+  try{
+    await auth.signInWithEmailAndPassword(email, pass);
+  }catch(e){ showErr(traduireErreur(e)); }
+}
+
+async function bootstrapAdmin(){
+  clearAuthNotices();
+  const existing = await db.collection('superadmins').limit(1).get();
+  if(!existing.empty){ showErr("Un super administrateur existe déjà. Utilisez le formulaire de connexion."); return; }
+  const email = prompt("E-mail du super administrateur :");
+  if(!email) return;
+  const pass = prompt("Mot de passe (6 caractères minimum) :");
+  if(!pass || pass.length < 6){ showErr('Mot de passe invalide.'); return; }
+  try{
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    await db.collection('superadmins').doc(cred.user.uid).set({
+      email: email, dateCreation: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }catch(e){ showErr(traduireErreur(e)); }
+}
+
+function traduireErreur(e){
+  const map = {
+    'auth/user-not-found':'Aucun compte associé à cet e-mail.',
+    'auth/wrong-password':'Mot de passe incorrect.',
+    'auth/invalid-credential':'Identifiants invalides.',
+    'auth/email-already-in-use':'Cette adresse e-mail est déjà utilisée.',
+    'auth/weak-password':'Mot de passe trop faible (6 caractères minimum).',
+    'auth/invalid-email':'Adresse e-mail invalide.'
+  };
+  return map[e.code] || ('Erreur : ' + e.message);
+}
+
+function doLogout(){
+  detachListeners();
+  auth.signOut();
+}
+
+/* ==========================================================
+   ROUTAGE SELON L'ÉTAT DE CONNEXION
+========================================================== */
+auth.onAuthStateChanged(async (user)=>{
+  document.getElementById('loader').style.display='none';
+  if(!user){
+    currentUser = null;
+    document.getElementById('app').classList.remove('ready');
+    document.getElementById('adminApp').style.display='none';
+    document.getElementById('authScreen').style.display='flex';
+    return;
+  }
+
+  // Est-ce un super admin ?
+  const adminSnap = await db.collection('superadmins').doc(user.uid).get();
+  if(adminSnap.exists){
+    document.getElementById('authScreen').style.display='none';
+    document.getElementById('app').classList.remove('ready');
+    document.getElementById('adminApp').style.display='block';
+    loadFoyersList();
+    return;
+  }
+
+  // Sinon, utilisateur de foyer
+  const userSnap = await db.collection('users').doc(user.uid).get();
+  if(!userSnap.exists){
+    showErr("Compte introuvable. Contactez votre administrateur.");
+    auth.signOut();
+    return;
+  }
+  currentUser = Object.assign({uid:user.uid}, userSnap.data());
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('adminApp').style.display='none';
+  document.getElementById('app').classList.add('ready');
+  document.getElementById('whoBadge').textContent = `${currentUser.nom} · ${roleLabel(currentUser.role)}`;
+  buildNav();
+  attachListeners();
+  navigate('dashboard');
+  logConnexion();
+});
+
+function roleLabel(r){
+  return {mari:'Époux', femme:'Épouse', comptable:'Comptable', administrateur:'Administrateur'}[r] || r;
+}
+
+function peutModifier(){
+  return !(currentUser.role==='comptable' && currentUser.lectureSeule===true);
+}
+function bloquerSiLectureSeule(){
+  if(!peutModifier()){ alert("Votre compte est en lecture seule. Contactez l'administrateur du foyer pour effectuer des modifications."); return true; }
+  return false;
+}
+
+/* ==========================================================
+   CONSOLE SUPER ADMIN — gestion des foyers (métadonnées uniquement)
+========================================================== */
+function loadFoyersList(){
+  db.collection('foyers').orderBy('dateCreation','desc').onSnapshot(snap=>{
+    const tbody = document.getElementById('foyersTbody');
+    if(snap.empty){ tbody.innerHTML = `<tr><td colspan="5" class="empty-row">Aucun foyer enregistré pour l'instant.</td></tr>`; return; }
+    tbody.innerHTML = snap.docs.map(d=>{
+      const f = d.data();
+      const date = f.dateCreation && f.dateCreation.toDate ? f.dateCreation.toDate().toLocaleDateString('fr-FR') : '—';
+      return `<tr>
+        <td>${escapeHtml(f.nom)}</td>
+        <td><span class="tag ${f.statut==='actif'?'mari':'commun'}">${f.statut}</span></td>
+        <td>${date}</td>
+        <td><span class="mono-badge" style="padding:3px 8px;font-size:12px;">${f.tokenInscription}</span></td>
+        <td style="text-align:right;">
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="toggleFoyerStatut('${d.id}','${f.statut}')">${f.statut==='actif'?'Suspendre':'Réactiver'}</button>
+        </td>
+      </tr>`;
+    }).join('');
+  });
+}
+
+function openNewFoyerModal(){
+  openModal(`
+    <h3>Enregistrer un nouveau couple</h3>
+    <div class="field"><label>Nom du foyer (ex: Famille Kédel)</label><input type="text" id="newFoyerNom" placeholder="Nom du foyer"></div>
+    <p class="small-note">Un code d'inscription unique sera généré. Transmettez-le au couple : ils l'utiliseront dans l'onglet « Rejoindre un foyer » pour créer leurs propres comptes. Vous n'aurez jamais accès à leurs données financières.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-gold" onclick="createFoyer()">Créer le foyer</button>
+    </div>
+  `);
+}
+
+async function createFoyer(){
+  const nom = document.getElementById('newFoyerNom').value.trim();
+  if(!nom) return;
+  const token = genToken();
+  const ref = await db.collection('foyers').add({
+    nom: nom,
+    statut: 'actif',
+    tokenInscription: token,
+    dateCreation: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  closeModal();
+  openModal(`
+    <h3>Foyer créé ✓</h3>
+    <p class="small-note" style="margin-bottom:10px;">Transmettez ce code au couple :</p>
+    <div class="mono-badge">${token}</div>
+    <div class="modal-actions"><button class="btn btn-gold" onclick="closeModal()">Fermer</button></div>
+  `);
+}
+
+async function toggleFoyerStatut(id, statutActuel){
+  const nouveau = statutActuel==='actif' ? 'suspendu' : 'actif';
+  await db.collection('foyers').doc(id).update({statut: nouveau});
+}
+
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+/* ==========================================================
+   NAVIGATION APPLICATION FOYER
+========================================================== */
+const NAV = [
+  {sec:"Vue d'ensemble", items:[
+    {id:'dashboard', label:'Tableau de bord', ic:'◆'}
+  ]},
+  {sec:'Flux', items:[
+    {id:'revenus', label:'Revenus', ic:'↑'},
+    {id:'depenses', label:'Dépenses', ic:'↓'}
+  ]},
+  {sec:'Engagements', items:[
+    {id:'dettes', label:'Dettes & Prêts', ic:'⚑'},
+    {id:'dimes', label:'Dîmes', ic:'✦'},
+    {id:'dons', label:'Dons', ic:'❋'},
+    {id:'effets', label:'Effets à recevoir', ic:'⇥'}
+  ]},
+  {sec:'Épargne & projets', items:[
+    {id:'epargnes', label:'Épargne', ic:'●'},
+    {id:'sol', label:'Sòl (Konbit)', ic:'⟲'},
+    {id:'objectifs', label:'Objectifs', ic:'★'}
+  ]},
+  {sec:'Foyer', items:[
+    {id:'activites', label:'Activités & profils', ic:'☺'}
+  ]},
+  {sec:'Patrimoine', items:[
+    {id:'investissements', label:'Investissements', ic:'▲'},
+    {id:'patrimoine', label:'Patrimoine net', ic:'◈'},
+    {id:'budget', label:'Budget', ic:'▤'}
+  ]},
+  {sec:'Pilotage', items:[
+    {id:'calendrier', label:'Calendrier financier', ic:'▦'},
+    {id:'ia', label:'Assistant IA', ic:'✧'},
+    {id:'simulateurs', label:'Simulateurs', ic:'⇄'},
+    {id:'rapports', label:'Rapports', ic:'⤓'}
+  ]},
+  {sec:'Compte', items:[
+    {id:'securite', label:'Sécurité & connexions', ic:'⛨'},
+    {id:'notifications', label:'Notifications', ic:'⚐'},
+    {id:'membres', label:'Membres & permissions', ic:'⚭'},
+    {id:'journal', label:"Journal d'audit", ic:'▤'},
+    {id:'sauvegarde', label:'Sauvegarde', ic:'⇊'}
+  ]}
+];
+
+function buildNav(){
+  const root = document.getElementById('navItems');
+  root.innerHTML = NAV.map(sec=>`
+    <div class="nav-section-label">${sec.sec}</div>
+    ${sec.items.map(it=>`<div class="nav-item" data-nav="${it.id}" onclick="navigate('${it.id}')"><span class="ic">${it.ic}</span> ${it.label}</div>`).join('')}
+  `).join('');
+}
+
+function navigate(view){
+  currentView = view;
+  document.querySelectorAll('.nav-item[data-nav]').forEach(el=>{
+    el.classList.toggle('active', el.dataset.nav===view);
+  });
+  const titles = {dashboard:'Tableau de bord', revenus:'Revenus', depenses:'Dépenses', dettes:'Dettes & Prêts', dimes:'Dîmes', epargnes:'Épargne', dons:'Dons', effets:'Effets à recevoir', sol:'Sòl (Konbit)', objectifs:'Objectifs financiers', investissements:'Investissements', patrimoine:'Patrimoine net', budget:'Budget prévisionnel', calendrier:'Calendrier financier', ia:'Assistant IA financière', rapports:'Rapports', activites:'Activités & profils', securite:'Sécurité & connexions', notifications:'Notifications', simulateurs:'Simulateurs', membres:'Membres & permissions', journal:"Journal d'audit", sauvegarde:'Sauvegarde'};
+  document.getElementById('pageTitle').textContent = titles[view] || view;
+  render();
+}
+
+/* ==========================================================
+   ÉCOUTE TEMPS RÉEL DES DONNÉES DU FOYER
+========================================================== */
+function attachListeners(){
+  chargerPrefsDashboard().then(()=>{ if(currentView==='dashboard') render(); });
+  const base = db.collection('foyers').doc(currentUser.foyerId);
+  const subs = ['revenus','depenses','dettes','epargnes','dons','effets','sol','objectifs','investissements','budgets','patrimoineHistorique','activites','notifications'];
+  subs.forEach(col=>{
+    const unsub = base.collection(col).orderBy('date','desc').onSnapshot(snap=>{
+      cache[col] = snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+      if(currentView===col || currentView==='dashboard') render();
+    }, err=>{
+      // en cas d'index manquant sur "date", on retente sans tri
+      base.collection(col).onSnapshot(snap2=>{
+        cache[col] = snap2.docs.map(d=>Object.assign({id:d.id}, d.data()));
+        if(currentView===col || currentView==='dashboard') render();
+      });
+    });
+    unsubscribers.push(unsub);
+  });
+}
+function detachListeners(){ unsubscribers.forEach(u=>u()); unsubscribers=[]; cache={revenus:[],depenses:[],dettes:[],epargnes:[]}; }
+
+function foyerCol(name){ return db.collection('foyers').doc(currentUser.foyerId).collection(name); }
+
+/* ==========================================================
+   CALCULS FINANCIERS
+========================================================== */
+function isThisMonth(dateStr){
+  if(!dateStr) return false;
+  const d = new Date(dateStr); const now = new Date();
+  return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear();
+}
+
+function computeTotals(){
+  const rev = cache.revenus, dep = cache.depenses, dettes = cache.dettes, ep = cache.epargnes;
+
+  const sumBy = (arr, prop, filterFn) => arr.filter(filterFn||(()=>true)).reduce((s,x)=>s+Number(x[prop]||x.montant||0),0);
+
+  const revenusTotal = sumBy(rev,'montant');
+  const depensesTotal = sumBy(dep,'montant');
+  const epargneTotal = sumBy(ep,'montant');
+  const detteRestante = sumBy(dettes,'montantRestant');
+
+  const revenusMari = sumBy(rev,'montant', x=>x.proprietaire==='mari');
+  const revenusFemme = sumBy(rev,'montant', x=>x.proprietaire==='femme');
+  const revenusCommun = sumBy(rev,'montant', x=>x.proprietaire==='commun');
+  const depensesMari = sumBy(dep,'montant', x=>x.payePar==='mari');
+  const depensesFemme = sumBy(dep,'montant', x=>x.payePar==='femme');
+  const depensesCommun = sumBy(dep,'montant', x=>x.payePar==='commun');
+
+  const argentMari = revenusMari - depensesMari;
+  const argentFemme = revenusFemme - depensesFemme;
+  const argentCommun = revenusCommun - depensesCommun;
+  const solde = revenusTotal - depensesTotal;
+
+  const detteMari = sumBy(dettes,'montantRestant', x=>x.responsable==='mari');
+  const detteFemme = sumBy(dettes,'montantRestant', x=>x.responsable==='femme');
+  const detteFamiliale = sumBy(dettes,'montantRestant', x=>x.responsable==='commun');
+
+  const dimeDue = revenusTotal * 0.10;
+  const dimePayee = sumBy(rev,'montant', x=>x.dimePayee) * 0.10;
+  const dimeRestante = dimeDue - dimePayee;
+
+  const revenusMois = sumBy(rev,'montant', x=>isThisMonth(x.date));
+  const depensesMois = sumBy(dep,'montant', x=>isThisMonth(x.date));
+
+  const investTotal = sumBy(cache.investissements,'montantInvesti');
+  const investValeurActuelle = sumBy(cache.investissements,'valeurActuelle');
+  const investPlusValue = investValeurActuelle - investTotal;
+
+  const actifs = epargneTotal + investValeurActuelle;
+  const passifs = detteRestante;
+  const patrimoineNet = actifs - passifs;
+
+  return { revenusTotal, depensesTotal, epargneTotal, detteRestante, argentMari, argentFemme, argentCommun, solde,
+           detteMari, detteFemme, detteFamiliale, dimeDue, dimePayee, dimeRestante, revenusMois, depensesMois,
+           investTotal, investValeurActuelle, investPlusValue, actifs, passifs, patrimoineNet };
+}
+
+/* ==========================================================
+   RENDU DES VUES
+========================================================== */
+function render(){
+  const root = document.getElementById('viewRoot');
+  if(currentView==='dashboard') root.innerHTML = renderDashboard();
+  else if(currentView==='revenus') root.innerHTML = renderLedger('revenus');
+  else if(currentView==='depenses') root.innerHTML = renderLedger('depenses');
+  else if(currentView==='dettes') root.innerHTML = renderLedger('dettes');
+  else if(currentView==='dimes') root.innerHTML = renderDimes();
+  else if(currentView==='epargnes') root.innerHTML = renderLedger('epargnes');
+  else if(currentView==='dons') root.innerHTML = renderLedger('dons');
+  else if(currentView==='effets') root.innerHTML = renderEffets();
+  else if(currentView==='sol') root.innerHTML = renderSol();
+  else if(currentView==='objectifs') root.innerHTML = renderObjectifs();
+  else if(currentView==='investissements') root.innerHTML = renderInvestissements();
+  else if(currentView==='patrimoine') root.innerHTML = renderPatrimoine();
+  else if(currentView==='budget') root.innerHTML = renderBudget();
+  else if(currentView==='calendrier') root.innerHTML = renderCalendrier();
+  else if(currentView==='ia') root.innerHTML = renderIA();
+  else if(currentView==='rapports') root.innerHTML = renderRapports();
+  else if(currentView==='activites') root.innerHTML = renderActivites();
+  else if(currentView==='securite') root.innerHTML = renderSecurite();
+  else if(currentView==='notifications') root.innerHTML = renderNotificationsPage();
+  else if(currentView==='simulateurs') root.innerHTML = renderSimulateurs();
+  else if(currentView==='membres') root.innerHTML = renderMembres();
+  else if(currentView==='journal') root.innerHTML = renderJournal();
+  else if(currentView==='sauvegarde') root.innerHTML = renderSauvegarde();
+
+  if(currentView==='dashboard') setTimeout(drawDashboardChart, 30);
+  if(currentView==='patrimoine') setTimeout(drawPatrimoineChart, 30);
+  if(currentView==='ia') setTimeout(scrollChatToBottom, 30);
+  if(currentView==='securite') chargerHistoriqueConnexions();
+  if(currentView==='membres') chargerMembres();
+  if(currentView==='journal') chargerJournal();
+  updateNotifBell();
+}
+
+let _dashboardPrefs = { alertes:true, graphique:true, operations:true, patrimoine:true };
+async function chargerPrefsDashboard(){
+  const snap = await foyerCol('parametres').doc('dashboard').get().catch(()=>null);
+  if(snap && snap.exists) _dashboardPrefs = Object.assign(_dashboardPrefs, snap.data());
+}
+function ouvrirPersonnalisationDashboard(){
+  openModal(`
+    <h3>Personnaliser le tableau de bord</h3>
+    <div class="field"><label><input type="checkbox" id="pref_patrimoine" ${_dashboardPrefs.patrimoine?'checked':''}> Afficher le patrimoine net</label></div>
+    <div class="field"><label><input type="checkbox" id="pref_alertes" ${_dashboardPrefs.alertes?'checked':''}> Afficher les alertes</label></div>
+    <div class="field"><label><input type="checkbox" id="pref_graphique" ${_dashboardPrefs.graphique?'checked':''}> Afficher le graphique revenus/dépenses</label></div>
+    <div class="field"><label><input type="checkbox" id="pref_operations" ${_dashboardPrefs.operations?'checked':''}> Afficher les dernières opérations</label></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="sauverPrefsDashboard()">Enregistrer</button></div>
+  `);
+}
+async function sauverPrefsDashboard(){
+  _dashboardPrefs = {
+    patrimoine: document.getElementById('pref_patrimoine').checked,
+    alertes: document.getElementById('pref_alertes').checked,
+    graphique: document.getElementById('pref_graphique').checked,
+    operations: document.getElementById('pref_operations').checked
+  };
+  await foyerCol('parametres').doc('dashboard').set(_dashboardPrefs, {merge:true});
+  closeModal();
+  render();
+}
+
+function renderDashboard(){
+  genererNotificationsAuto();
+  const t = computeTotals();
+  const totalBal = Math.max(t.argentMari,0) + Math.max(t.argentFemme,0) + Math.max(t.argentCommun,0);
+  const pM = totalBal>0 ? (Math.max(t.argentMari,0)/totalBal*100) : 33.3;
+  const pF = totalBal>0 ? (Math.max(t.argentFemme,0)/totalBal*100) : 33.3;
+  const pC = totalBal>0 ? (Math.max(t.argentCommun,0)/totalBal*100) : 33.4;
+
+  return `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:-6px;">
+      <button class="btn btn-ghost" style="font-size:12px;" onclick="ouvrirPersonnalisationDashboard()">⚙ Personnaliser</button>
+    </div>
+    <div class="grid g4">
+      <div class="card"><div class="label">Solde disponible</div><div class="value ${t.solde>=0?'pos':'neg'}">${fmt(t.solde)} HTG</div></div>
+      <div class="card"><div class="label">Revenus (ce mois)</div><div class="value pos">${fmt(t.revenusMois)} HTG</div></div>
+      <div class="card"><div class="label">Dépenses (ce mois)</div><div class="value neg">${fmt(t.depensesMois)} HTG</div></div>
+      <div class="card"><div class="label">Épargne totale</div><div class="value neutral">${fmt(t.epargneTotal)} HTG</div></div>
+    </div>
+
+    <div class="ribbon-wrap" style="margin-top:20px;">
+      <div class="ribbon-title"><span>Répartition du solde disponible</span><span>Époux · Épouse · Commun</span></div>
+      <div class="ribbon">
+        <div class="seg mari" style="width:${pM}%">${pM>10?fmt(t.argentMari):''}</div>
+        <div class="seg femme" style="width:${pF}%">${pF>10?fmt(t.argentFemme):''}</div>
+        <div class="seg commun" style="width:${pC}%">${pC>10?fmt(t.argentCommun):''}</div>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--sage-2)"></span>Époux — ${fmt(t.argentMari)} HTG</span>
+        <span><span class="dot" style="background:var(--gold)"></span>Épouse — ${fmt(t.argentFemme)} HTG</span>
+        <span><span class="dot" style="background:var(--clay-2)"></span>Commun — ${fmt(t.argentCommun)} HTG</span>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:6px;">
+      <div class="card"><div class="label">Dette restante (totale)</div><div class="value neg">${fmt(t.detteRestante)} HTG</div></div>
+      <div class="card"><div class="label">Dîmes dues (10%)</div><div class="value neutral">${fmt(t.dimeDue)} HTG</div></div>
+      <div class="card"><div class="label">Dîmes restantes à payer</div><div class="value ${t.dimeRestante>0?'neg':'pos'}">${fmt(t.dimeRestante)} HTG</div></div>
+    </div>
+
+    ${_dashboardPrefs.patrimoine ? `
+    <div class="grid g2" style="margin-top:6px;">
+      <div class="card"><div class="label">Patrimoine net (actifs − passifs)</div><div class="value ${t.patrimoineNet>=0?'pos':'neg'}">${fmt(t.patrimoineNet)} HTG</div></div>
+      <div class="card"><div class="label">Investissements (valeur actuelle)</div><div class="value neutral">${fmt(t.investValeurActuelle)} HTG</div></div>
+    </div>` : ''}
+
+    ${_dashboardPrefs.alertes ? renderAlertes() : ''}
+
+    ${_dashboardPrefs.graphique ? `
+    <div class="section-head"><h2>Revenus vs Dépenses</h2></div>
+    <div class="card"><canvas id="dashChart" height="90"></canvas></div>` : ''}
+
+    ${_dashboardPrefs.operations ? `
+    <div class="section-head"><h2>Dernières opérations</h2></div>
+    ${renderRecentOps()}` : ''}
+  `;
+}
+
+function renderAlertes(){
+  const alertes = [];
+  (cache.effets||[]).forEach(e=>{
+    if(e.statut==='attendu'){
+      const jr = joursRestants(e.dateAttendue);
+      if(jr!==null && jr<0) alertes.push({type:'neg', texte:`Effet en retard : « ${e.description} » attendu depuis ${Math.abs(jr)} jour(s) — ${fmt(e.montant)} HTG`});
+      else if(jr!==null && jr<=3) alertes.push({type:'neutral', texte:`À recevoir bientôt : « ${e.description} » dans ${jr} jour(s) — ${fmt(e.montant)} HTG`});
+    }
+  });
+  (cache.dettes||[]).forEach(d=>{
+    if(d.echeance){
+      const jr = joursRestants(d.echeance);
+      if(jr!==null && jr<0 && Number(d.montantRestant||0)>0) alertes.push({type:'neg', texte:`Dette en retard : « ${d.creancier} » — ${fmt(d.montantRestant)} HTG restants`});
+    }
+  });
+  if(alertes.length===0) return '';
+  return `
+    <div class="section-head"><h2>Alertes</h2></div>
+    <div class="grid" style="gap:8px;">
+      ${alertes.map(a=>`<div class="card" style="padding:12px 16px;border-left:3px solid ${a.type==='neg'?'var(--clay)':'var(--gold)'};"><span style="font-size:13px;">${a.texte}</span></div>`).join('')}
+    </div>
+  `;
+}
+
+function renderRecentOps(){
+  const all = [
+    ...cache.revenus.map(x=>({...x, _type:'Revenu', _sign:1})),
+    ...cache.depenses.map(x=>({...x, _type:'Dépense', _sign:-1}))
+  ].sort((a,b)=> new Date(b.date||0) - new Date(a.date||0)).slice(0,8);
+
+  if(all.length===0) return `<div class="card empty-row">Aucune opération enregistrée. Ajoutez un revenu ou une dépense pour commencer.</div>`;
+
+  return `<table class="ledger"><thead><tr><th>Date</th><th>Type</th><th>Description</th><th class="num">Montant</th></tr></thead>
+  <tbody>
+  ${all.map(x=>`<tr><td>${x.date||'—'}</td><td><span class="tag ${x._sign>0?'mari':'commun'}">${x._type}</span></td><td>${escapeHtml(x.description||'')}</td>
+  <td class="num ${x._sign>0?'value pos':'value neg'}" style="font-size:13px;">${x._sign>0?'+':'−'}${fmt(x.montant)}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+let dashChartInstance = null;
+function drawDashboardChart(){
+  const canvas = document.getElementById('dashChart');
+  if(!canvas) return;
+  const months = [];
+  const now = new Date();
+  for(let i=5;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    months.push({key:`${d.getFullYear()}-${d.getMonth()}`, label:d.toLocaleDateString('fr-FR',{month:'short'})});
+  }
+  const revByMonth = months.map(m=>{
+    return cache.revenus.filter(x=>{ if(!x.date) return false; const d=new Date(x.date); return `${d.getFullYear()}-${d.getMonth()}`===m.key; }).reduce((s,x)=>s+Number(x.montant||0),0);
+  });
+  const depByMonth = months.map(m=>{
+    return cache.depenses.filter(x=>{ if(!x.date) return false; const d=new Date(x.date); return `${d.getFullYear()}-${d.getMonth()}`===m.key; }).reduce((s,x)=>s+Number(x.montant||0),0);
+  });
+
+  if(dashChartInstance) dashChartInstance.destroy();
+  dashChartInstance = new Chart(canvas.getContext('2d'), {
+    type:'bar',
+    data:{ labels: months.map(m=>m.label), datasets:[
+      {label:'Revenus', data:revByMonth, backgroundColor:'#6FA07F'},
+      {label:'Dépenses', data:depByMonth, backgroundColor:'#D97757'}
+    ]},
+    options:{ responsive:true, plugins:{legend:{labels:{color:'#F6F1E7'}}}, scales:{
+      x:{ticks:{color:'#C9C3B4'}, grid:{color:'rgba(246,241,231,0.06)'}},
+      y:{ticks:{color:'#C9C3B4'}, grid:{color:'rgba(246,241,231,0.06)'}}
+    }}
+  });
+}
+
+/* ---------- Vue ledger générique (revenus / dépenses / dettes / épargnes) ---------- */
+const LEDGER_CONF = {
+  revenus: {
+    title:'Revenus', addLabel:'+ Ajouter un revenu',
+    cols:[['date','Date'],['description','Description'],['type','Type'],['proprietaire','Propriétaire','tag'],['montant','Montant','num']],
+  },
+  depenses: {
+    title:'Dépenses', addLabel:'+ Ajouter une dépense',
+    cols:[['date','Date'],['description','Description'],['categorie','Catégorie'],['payePar','Payé par','tag'],['montant','Montant','num']],
+  },
+  dettes: {
+    title:'Dettes & Prêts', addLabel:'+ Ajouter une dette',
+    cols:[['creancier','Créancier'],['description','Description'],['responsable','Responsable','tag'],['montantRestant','Restant','num'],['echeance','Échéance']],
+  },
+  epargnes: {
+    title:'Épargne', addLabel:'+ Ajouter une opération',
+    cols:[['date','Date'],['compte','Compte'],['objectif','Objectif'],['responsable','Responsable','tag'],['montant','Montant','num']],
+  },
+  dons: {
+    title:'Dons', addLabel:'+ Ajouter un don',
+    cols:[['date','Date'],['nom','Personne'],['motif','Motif'],['type','Type'],['montant','Montant','num']],
+  }
+};
+
+function renderLedger(col){
+  const conf = LEDGER_CONF[col];
+  const rows = cache[col] || [];
+  const t = computeTotals();
+  const totalLabel = col==='dettes' ? fmt(t.detteRestante) : fmt(rows.reduce((s,x)=>s+Number(x.montant||0),0));
+
+  return `
+    <div class="section-head">
+      <h2>${conf.title}</h2>
+      <button class="btn btn-gold" onclick="openLedgerForm('${col}')">${conf.addLabel}</button>
+    </div>
+    <div class="card" style="margin-bottom:16px;"><div class="label">Total</div><div class="value neutral">${totalLabel} HTG</div></div>
+    <table class="ledger">
+      <thead><tr>${conf.cols.map(c=>`<th class="${c[2]==='num'?'num':''}">${c[1]}</th>`).join('')}<th></th></tr></thead>
+      <tbody>
+      ${rows.length===0 ? `<tr><td colspan="${conf.cols.length+1}" class="empty-row">Aucune entrée pour l'instant.</td></tr>` :
+        rows.map(r=>`<tr>${conf.cols.map(c=>{
+          const val = r[c[0]] ?? '—';
+          if(c[2]==='num') return `<td class="num value" style="font-size:13px;">${fmt(val)}</td>`;
+          if(c[2]==='tag') return `<td><span class="tag ${val}">${val}</span></td>`;
+          return `<td>${escapeHtml(String(val))}</td>`;
+        }).join('')}<td style="text-align:right;"><button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="deleteEntry('${col}','${r.id}')">Suppr.</button></td></tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function deleteEntry(col, id){
+  if(bloquerSiLectureSeule()) return;
+  if(!confirm('Supprimer cette entrée ?')) return;
+  foyerCol(col).doc(id).delete();
+}
+
+/* ---------- Formulaires d'ajout ---------- */
+function openLedgerForm(col){
+  const forms = {
+    revenus: `
+      <h3>Ajouter un revenu</h3>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input type="date" id="f_date" value="${todayISO()}"></div>
+        <div class="field"><label>Montant (HTG)</label><input type="number" id="f_montant" placeholder="0.00"></div>
+      </div>
+      <div class="field"><label>Description</label><input type="text" id="f_description" placeholder="Ex: Salaire juin"></div>
+      <div class="field-row">
+        <div class="field"><label>Type</label><select id="f_type">
+          <option>Salaire</option><option>Business</option><option>Commerce</option><option>Agriculture</option>
+          <option>Don</option><option>Prime</option><option>Investissement</option><option>Remboursement</option>
+          <option>Commission</option><option>Location</option><option>Autres</option>
+        </select></div>
+        <div class="field"><label>Propriétaire</label><select id="f_proprietaire"><option value="mari">Époux</option><option value="femme">Épouse</option><option value="commun">Commun</option></select></div>
+      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitLedgerForm('revenus')">Enregistrer</button></div>
+    `,
+    depenses: `
+      <h3>Ajouter une dépense</h3>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input type="date" id="f_date" value="${todayISO()}"></div>
+        <div class="field"><label>Montant (HTG)</label><input type="number" id="f_montant" placeholder="0.00"></div>
+      </div>
+      <div class="field"><label>Description</label><input type="text" id="f_description" placeholder="Ex: Épicerie"></div>
+      <div class="field-row">
+        <div class="field"><label>Catégorie</label><input type="text" id="f_categorie" placeholder="Ex: Alimentation"></div>
+        <div class="field"><label>Payé par</label><select id="f_payePar"><option value="mari">Époux</option><option value="femme">Épouse</option><option value="commun">Commun</option></select></div>
+      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitLedgerForm('depenses')">Enregistrer</button></div>
+    `,
+    dettes: `
+      <h3>Ajouter une dette / un prêt</h3>
+      <div class="field"><label>Créancier</label><input type="text" id="f_creancier" placeholder="Nom du créancier"></div>
+      <div class="field"><label>Description</label><input type="text" id="f_description" placeholder="Motif de la dette"></div>
+      <div class="field-row">
+        <div class="field"><label>Montant initial</label><input type="number" id="f_montantInitial" placeholder="0.00"></div>
+        <div class="field"><label>Montant restant</label><input type="number" id="f_montantRestant" placeholder="0.00"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Responsable</label><select id="f_responsable"><option value="mari">Époux</option><option value="femme">Épouse</option><option value="commun">Commun</option></select></div>
+        <div class="field"><label>Échéance</label><input type="date" id="f_echeance"></div>
+      </div>
+      <details style="margin-bottom:14px;">
+        <summary class="small-note" style="cursor:pointer;">Simuler la mensualité avant d'enregistrer</summary>
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field"><label>Taux annuel (%)</label><input type="number" id="simDetteTaux" placeholder="Ex: 12"></div>
+          <div class="field"><label>Durée (mois)</label><input type="number" id="simDetteDuree" placeholder="Ex: 12"></div>
+        </div>
+        <button type="button" class="btn btn-ghost" style="font-size:12px;" onclick="simulerMensualiteDette()">Calculer la mensualité</button>
+        <div id="resultatSimDette" class="small-note" style="margin-top:8px;"></div>
+      </details>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitLedgerForm('dettes')">Enregistrer</button></div>
+    `,
+    epargnes: `
+      <h3>Ajouter une opération d'épargne</h3>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input type="date" id="f_date" value="${todayISO()}"></div>
+        <div class="field"><label>Montant (HTG)</label><input type="number" id="f_montant" placeholder="0.00"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Compte</label><select id="f_compte"><option>Banque</option><option>Maison</option><option>Cash</option><option>Mobile Money</option><option>Coopérative</option><option>Association</option></select></div>
+        <div class="field"><label>Responsable</label><select id="f_responsable"><option value="mari">Époux</option><option value="femme">Épouse</option><option value="commun">Commun</option></select></div>
+      </div>
+      <div class="field"><label>Objectif (optionnel)</label><input type="text" id="f_objectif" placeholder="Ex: Fonds d'urgence"></div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitLedgerForm('epargnes')">Enregistrer</button></div>
+    `,
+    dons: `
+      <h3>Ajouter un don</h3>
+      <div class="field-row">
+        <div class="field"><label>Date</label><input type="date" id="f_date" value="${todayISO()}"></div>
+        <div class="field"><label>Montant (HTG)</label><input type="number" id="f_montant" placeholder="0.00"></div>
+      </div>
+      <div class="field"><label>Nom de la personne</label><input type="text" id="f_nom" placeholder="Qui donne / reçoit"></div>
+      <div class="field-row">
+        <div class="field"><label>Type</label><select id="f_type"><option value="recu">Reçu par le foyer</option><option value="donne">Donné par le foyer</option></select></div>
+        <div class="field"><label>Lieu</label><input type="text" id="f_lieu" placeholder="Lieu"></div>
+      </div>
+      <div class="field"><label>Motif</label><input type="text" id="f_motif" placeholder="Raison du don"></div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitLedgerForm('dons')">Enregistrer</button></div>
+    `,
+    effets: `
+      <h3>Ajouter un effet à recevoir</h3>
+      <div class="field"><label>Description</label><input type="text" id="f_description" placeholder="Ex: Salaire de juillet"></div>
+      <div class="field-row">
+        <div class="field"><label>Type</label><select id="f_type">
+          <option>Salaire attendu</option><option>Sòl</option><option>Prêt</option><option>Don promis</option><option>Prime</option><option>Commission</option>
+        </select></div>
+        <div class="field"><label>Montant (HTG)</label><input type="number" id="f_montant" placeholder="0.00"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Date prévue</label><input type="date" id="f_dateAttendue"></div>
+        <div class="field"><label>Responsable</label><select id="f_responsable"><option value="mari">Époux</option><option value="femme">Épouse</option><option value="commun">Commun</option></select></div>
+      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitLedgerForm('effets')">Enregistrer</button></div>
+    `
+  };
+  openModal(forms[col]);
+}
+
+async function submitLedgerForm(col){
+  if(bloquerSiLectureSeule()) return;
+  const get = id => document.getElementById(id) ? document.getElementById(id).value : undefined;
+  let data = {};
+  if(col==='revenus') data = { date:get('f_date'), montant:Number(get('f_montant')||0), description:get('f_description'), type:get('f_type'), proprietaire:get('f_proprietaire'), dimePayee:false };
+  if(col==='depenses') data = { date:get('f_date'), montant:Number(get('f_montant')||0), description:get('f_description'), categorie:get('f_categorie'), payePar:get('f_payePar') };
+  if(col==='dettes') data = { creancier:get('f_creancier'), description:get('f_description'), montantInitial:Number(get('f_montantInitial')||0), montantRestant:Number(get('f_montantRestant')||0), responsable:get('f_responsable'), echeance:get('f_echeance') };
+  if(col==='epargnes') data = { date:get('f_date'), montant:Number(get('f_montant')||0), compte:get('f_compte'), responsable:get('f_responsable'), objectif:get('f_objectif') };
+  if(col==='dons') data = { date:get('f_date'), montant:Number(get('f_montant')||0), nom:get('f_nom'), type:get('f_type'), lieu:get('f_lieu'), motif:get('f_motif') };
+  if(col==='effets') data = { description:get('f_description'), type:get('f_type'), montant:Number(get('f_montant')||0), dateAttendue:get('f_dateAttendue'), responsable:get('f_responsable'), statut:'attendu' };
+
+  data.creePar = currentUser.uid;
+  data.creeLe = firebase.firestore.FieldValue.serverTimestamp();
+
+  await foyerCol(col).add(data);
+  await logAudit(col, 'creation', data);
+  closeModal();
+}
+
+/* ---------- Vue Dîmes (dérivée des revenus) ---------- */
+function renderDimes(){
+  const t = computeTotals();
+  const revWithDime = cache.revenus.map(r=>({...r, dime: Number(r.montant||0)*0.10}));
+
+  return `
+    <div class="grid g3">
+      <div class="card"><div class="label">Dîmes dues (10% des revenus)</div><div class="value neutral">${fmt(t.dimeDue)} HTG</div></div>
+      <div class="card"><div class="label">Dîmes payées</div><div class="value pos">${fmt(t.dimePayee)} HTG</div></div>
+      <div class="card"><div class="label">Dîmes restantes</div><div class="value ${t.dimeRestante>0?'neg':'pos'}">${fmt(t.dimeRestante)} HTG</div></div>
+    </div>
+    <div class="section-head"><h2>Détail par revenu</h2></div>
+    <table class="ledger">
+      <thead><tr><th>Date</th><th>Revenu</th><th class="num">Montant</th><th class="num">Dîme (10%)</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+      ${revWithDime.length===0 ? `<tr><td colspan="6" class="empty-row">Aucun revenu enregistré.</td></tr>` :
+        revWithDime.map(r=>`<tr>
+          <td>${r.date||'—'}</td><td>${escapeHtml(r.description||'')}</td>
+          <td class="num">${fmt(r.montant)}</td><td class="num">${fmt(r.dime)}</td>
+          <td><span class="tag ${r.dimePayee?'mari':'commun'}">${r.dimePayee?'Payée':'Due'}</span></td>
+          <td style="text-align:right;"><button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="toggleDime('${r.id}', ${!!r.dimePayee})">${r.dimePayee?'Marquer due':'Marquer payée'}</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function toggleDime(revenuId, statutActuel){
+  await foyerCol('revenus').doc(revenuId).update({ dimePayee: !statutActuel });
+}
+
+/* ---------- Vue Effets à recevoir ---------- */
+function joursRestants(dateStr){
+  if(!dateStr) return null;
+  const diff = (new Date(dateStr) - new Date());
+  return Math.ceil(diff / (1000*60*60*24));
+}
+
+function renderEffets(){
+  const rows = cache.effets || [];
+  const total = rows.filter(r=>r.statut!=='recu').reduce((s,x)=>s+Number(x.montant||0),0);
+  const enRetard = rows.filter(r=>r.statut==='attendu' && joursRestants(r.dateAttendue)<0).length;
+
+  return `
+    <div class="grid g3">
+      <div class="card"><div class="label">Total attendu</div><div class="value neutral">${fmt(total)} HTG</div></div>
+      <div class="card"><div class="label">Effets en attente</div><div class="value pos">${rows.filter(r=>r.statut==='attendu').length}</div></div>
+      <div class="card"><div class="label">En retard</div><div class="value ${enRetard>0?'neg':'pos'}">${enRetard}</div></div>
+    </div>
+    <div class="section-head">
+      <h2>Registre des effets à recevoir</h2>
+      <button class="btn btn-gold" onclick="openLedgerForm('effets')">+ Ajouter un effet</button>
+    </div>
+    <table class="ledger">
+      <thead><tr><th>Description</th><th>Type</th><th>Responsable</th><th>Date prévue</th><th class="num">Montant</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+      ${rows.length===0 ? `<tr><td colspan="7" class="empty-row">Aucun effet à recevoir enregistré.</td></tr>` :
+        rows.map(r=>{
+          const jr = joursRestants(r.dateAttendue);
+          const retard = r.statut==='attendu' && jr!==null && jr<0;
+          const statutLabel = r.statut==='recu' ? 'Reçu' : (retard ? `En retard (${Math.abs(jr)} j.)` : `Attendu${jr!==null?` (${jr} j.)`:''}`);
+          return `<tr>
+            <td>${escapeHtml(r.description||'')}</td><td>${escapeHtml(r.type||'')}</td>
+            <td><span class="tag ${r.responsable}">${r.responsable}</span></td>
+            <td>${r.dateAttendue||'—'}</td><td class="num">${fmt(r.montant)}</td>
+            <td><span class="tag ${r.statut==='recu'?'mari':(retard?'commun':'')}">${statutLabel}</span></td>
+            <td style="text-align:right;">${r.statut!=='recu' ? `<button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="marquerEffetRecu('${r.id}')">Marquer reçu</button>` : ''}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function marquerEffetRecu(id){
+  await foyerCol('effets').doc(id).update({ statut:'recu' });
+}
+
+/* ---------- Vue Sòl (Konbit) ---------- */
+function calcSol(g){
+  const pot = Number(g.valeurMain||0) * Number(g.nombreParticipants||0);
+  const montantGagne = pot * Number(g.mainsDetenues||0);
+  const montantPayeTotal = Number(g.valeurMain||0) * Number(g.paiementsEffectues||0);
+  const montantTotalDu = Number(g.valeurMain||0) * Number(g.nombreMains||0);
+  const montantRestant = Math.max(montantTotalDu - montantPayeTotal, 0);
+  return { pot, montantGagne, montantPayeTotal, montantTotalDu, montantRestant };
+}
+
+function renderSol(){
+  const groups = cache.sol || [];
+  return `
+    <div class="section-head">
+      <h2>Groupes de Sòl</h2>
+      <button class="btn btn-gold" onclick="openSolForm()">+ Nouveau groupe</button>
+    </div>
+    <div class="grid g2">
+    ${groups.length===0 ? `<div class="card empty-row">Aucun groupe de sòl enregistré.</div>` :
+      groups.map(g=>{
+        const c = calcSol(g);
+        return `<div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <div class="display" style="font-size:16px;font-weight:600;">${escapeHtml(g.nom)}</div>
+              <div class="small-note">Responsable : ${escapeHtml(g.responsable||'—')} · ${g.telephone||''}</div>
+            </div>
+            <button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="deleteEntry('sol','${g.id}')">Suppr.</button>
+          </div>
+          <div class="grid g2" style="margin-top:14px;">
+            <div><div class="label">Mains détenues</div><div class="value" style="font-size:16px;">${g.mainsDetenues} / ${g.nombreMains}</div></div>
+            <div><div class="label">Valeur d'une main</div><div class="value" style="font-size:16px;">${fmt(g.valeurMain)} HTG</div></div>
+            <div><div class="label">Montant gagné (reçu)</div><div class="value pos" style="font-size:16px;">${fmt(c.montantGagne)} HTG</div></div>
+            <div><div class="label">Restant à payer</div><div class="value neg" style="font-size:16px;">${fmt(c.montantRestant)} HTG</div></div>
+          </div>
+          <div style="margin-top:12px;"><button class="btn btn-ghost" style="font-size:12px;" onclick="enregistrerPaiementSol('${g.id}', ${g.paiementsEffectues||0})">+ Enregistrer un paiement</button></div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function openSolForm(){
+  openModal(`
+    <h3>Nouveau groupe de Sòl</h3>
+    <div class="field"><label>Nom du groupe</label><input type="text" id="f_nom" placeholder="Ex: Sòl des sœurs"></div>
+    <div class="field-row">
+      <div class="field"><label>Responsable</label><input type="text" id="f_responsable" placeholder="Nom"></div>
+      <div class="field"><label>Téléphone</label><input type="text" id="f_telephone" placeholder="Téléphone"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Nombre de participants</label><input type="number" id="f_nombreParticipants" placeholder="Ex: 10"></div>
+      <div class="field"><label>Nombre de mains (tours)</label><input type="number" id="f_nombreMains" placeholder="Ex: 10"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Valeur d'une main (HTG)</label><input type="number" id="f_valeurMain" placeholder="0.00"></div>
+      <div class="field"><label>Mains détenues par le foyer</label><input type="number" id="f_mainsDetenues" placeholder="Ex: 1" value="0"></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitSol()">Créer le groupe</button></div>
+  `);
+}
+
+async function submitSol(){
+  if(bloquerSiLectureSeule()) return;
+  const get = id => document.getElementById(id).value;
+  const data = {
+    nom:get('f_nom'), responsable:get('f_responsable'), telephone:get('f_telephone'),
+    nombreParticipants:Number(get('f_nombreParticipants')||0), nombreMains:Number(get('f_nombreMains')||0),
+    valeurMain:Number(get('f_valeurMain')||0), mainsDetenues:Number(get('f_mainsDetenues')||0),
+    paiementsEffectues:0
+  };
+  await foyerCol('sol').add(data);
+  await logAudit('sol','creation',{description:data.nom});
+  closeModal();
+}
+
+async function enregistrerPaiementSol(id, paiementsActuels){
+  await foyerCol('sol').doc(id).update({ paiementsEffectues: paiementsActuels + 1 });
+}
+
+/* ---------- Vue Objectifs financiers ---------- */
+function renderObjectifs(){
+  const objs = cache.objectifs || [];
+  return `
+    <div class="section-head">
+      <h2>Objectifs financiers</h2>
+      <button class="btn btn-gold" onclick="openObjectifForm()">+ Nouvel objectif</button>
+    </div>
+    <div class="grid g2">
+    ${objs.length===0 ? `<div class="card empty-row">Aucun objectif défini.</div>` :
+      objs.map(o=>{
+        const prog = Math.min(100, (Number(o.montantActuel||0) / Math.max(Number(o.montantCible||1),1)) * 100);
+        const jrs = joursRestants(o.dateCible);
+        return `<div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <div class="display" style="font-size:16px;font-weight:600;">${escapeHtml(o.nom)}</div>
+              <div class="small-note">${escapeHtml(o.categorie||'')} ${o.dateCible?`· échéance ${o.dateCible}`:''}</div>
+            </div>
+            <button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="deleteEntry('objectifs','${o.id}')">Suppr.</button>
+          </div>
+          <div style="margin:14px 0 6px;display:flex;justify-content:space-between;font-size:12.5px;color:var(--cream-dim);">
+            <span>${fmt(o.montantActuel)} / ${fmt(o.montantCible)} HTG</span><span>${prog.toFixed(0)}%</span>
+          </div>
+          <div style="height:8px;border-radius:6px;background:var(--navy-3);overflow:hidden;">
+            <div style="height:100%;width:${prog}%;background:${prog>=100?'var(--sage-2)':'var(--gold)'};"></div>
+          </div>
+          ${jrs!==null ? `<div class="small-note" style="margin-top:8px;">${jrs>=0?`${jrs} jours restants`:'Échéance dépassée'}</div>`:''}
+          <div style="margin-top:12px;"><button class="btn btn-ghost" style="font-size:12px;" onclick="ajouterMontantObjectif('${o.id}', ${o.montantActuel||0})">+ Ajouter un montant</button></div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function openObjectifForm(){
+  openModal(`
+    <h3>Nouvel objectif financier</h3>
+    <div class="field"><label>Nom de l'objectif</label><input type="text" id="f_nom" placeholder="Ex: Achat terrain"></div>
+    <div class="field"><label>Catégorie</label><select id="f_categorie">
+      <option>Maison</option><option>Voiture</option><option>Terrain</option><option>Études</option>
+      <option>Mariage</option><option>Voyage</option><option>Urgence</option><option>Projet</option>
+    </select></div>
+    <div class="field-row">
+      <div class="field"><label>Montant cible (HTG)</label><input type="number" id="f_montantCible" placeholder="0.00"></div>
+      <div class="field"><label>Montant déjà atteint</label><input type="number" id="f_montantActuel" placeholder="0.00" value="0"></div>
+    </div>
+    <div class="field"><label>Date cible</label><input type="date" id="f_dateCible"></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitObjectif()">Créer l'objectif</button></div>
+  `);
+}
+
+async function submitObjectif(){
+  if(bloquerSiLectureSeule()) return;
+  const get = id => document.getElementById(id).value;
+  const data = {
+    nom:get('f_nom'), categorie:get('f_categorie'),
+    montantCible:Number(get('f_montantCible')||0), montantActuel:Number(get('f_montantActuel')||0),
+    dateCible:get('f_dateCible')
+  };
+  await foyerCol('objectifs').add(data);
+  await logAudit('objectifs','creation',{description:data.nom});
+  closeModal();
+}
+
+async function ajouterMontantObjectif(id, actuel){
+  const montant = prompt('Montant à ajouter (HTG) :');
+  if(!montant || isNaN(Number(montant))) return;
+  await foyerCol('objectifs').doc(id).update({ montantActuel: actuel + Number(montant) });
+}
+
+/* ---------- Vue Investissements ---------- */
+function renderInvestissements(){
+  const rows = cache.investissements || [];
+  const t = computeTotals();
+  return `
+    <div class="grid g3">
+      <div class="card"><div class="label">Montant investi (total)</div><div class="value neutral">${fmt(t.investTotal)} HTG</div></div>
+      <div class="card"><div class="label">Valeur actuelle (total)</div><div class="value neutral">${fmt(t.investValeurActuelle)} HTG</div></div>
+      <div class="card"><div class="label">Plus/moins-value</div><div class="value ${t.investPlusValue>=0?'pos':'neg'}">${t.investPlusValue>=0?'+':''}${fmt(t.investPlusValue)} HTG</div></div>
+    </div>
+    <div class="section-head">
+      <h2>Registre des investissements</h2>
+      <button class="btn btn-gold" onclick="openInvestForm()">+ Ajouter un investissement</button>
+    </div>
+    <table class="ledger">
+      <thead><tr><th>Description</th><th>Type</th><th>Responsable</th><th class="num">Investi</th><th class="num">Valeur actuelle</th><th class="num">Rentabilité</th><th></th></tr></thead>
+      <tbody>
+      ${rows.length===0 ? `<tr><td colspan="7" class="empty-row">Aucun investissement enregistré.</td></tr>` :
+        rows.map(r=>{
+          const rentab = r.montantInvesti>0 ? ((r.valeurActuelle-r.montantInvesti)/r.montantInvesti*100) : 0;
+          return `<tr>
+            <td>${escapeHtml(r.description||'')}</td><td>${escapeHtml(r.type||'')}</td>
+            <td><span class="tag ${r.responsable}">${r.responsable}</span></td>
+            <td class="num">${fmt(r.montantInvesti)}</td><td class="num">${fmt(r.valeurActuelle)}</td>
+            <td class="num" style="color:${rentab>=0?'var(--sage-2)':'var(--clay-2)'};">${rentab>=0?'+':''}${rentab.toFixed(1)}%</td>
+            <td style="text-align:right;">
+              <button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="updateValeurInvest('${r.id}', ${r.valeurActuelle})">Actualiser</button>
+              <button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="deleteEntry('investissements','${r.id}')">Suppr.</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function openInvestForm(){
+  openModal(`
+    <h3>Ajouter un investissement</h3>
+    <div class="field"><label>Description</label><input type="text" id="f_description" placeholder="Ex: Terrain à Jérémie"></div>
+    <div class="field-row">
+      <div class="field"><label>Type</label><select id="f_type">
+        <option>Commerce</option><option>Terrain</option><option>Maison</option><option>Actions</option>
+        <option>Crypto</option><option>Obligations</option><option>Coopérative</option><option>Autres</option>
+      </select></div>
+      <div class="field"><label>Responsable</label><select id="f_responsable"><option value="mari">Époux</option><option value="femme">Épouse</option><option value="commun">Commun</option></select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Montant investi</label><input type="number" id="f_montantInvesti" placeholder="0.00"></div>
+      <div class="field"><label>Valeur actuelle</label><input type="number" id="f_valeurActuelle" placeholder="0.00"></div>
+    </div>
+    <div class="field"><label>Date</label><input type="date" id="f_date" value="${todayISO()}"></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitInvest()">Enregistrer</button></div>
+  `);
+}
+
+async function submitInvest(){
+  if(bloquerSiLectureSeule()) return;
+  const get = id => document.getElementById(id).value;
+  const data = {
+    description:get('f_description'), type:get('f_type'), responsable:get('f_responsable'),
+    montantInvesti:Number(get('f_montantInvesti')||0), valeurActuelle:Number(get('f_valeurActuelle')||0), date:get('f_date')
+  };
+  await foyerCol('investissements').add(data);
+  await logAudit('investissements','creation',{description:data.description});
+  closeModal();
+}
+
+async function updateValeurInvest(id, actuelle){
+  const val = prompt('Nouvelle valeur actuelle (HTG) :', actuelle);
+  if(val===null || isNaN(Number(val))) return;
+  await foyerCol('investissements').doc(id).update({ valeurActuelle: Number(val) });
+}
+
+/* ---------- Vue Patrimoine net ---------- */
+function renderPatrimoine(){
+  const t = computeTotals();
+  return `
+    <div class="grid g3">
+      <div class="card"><div class="label">Actifs (épargne + investissements)</div><div class="value pos">${fmt(t.actifs)} HTG</div></div>
+      <div class="card"><div class="label">Passifs (dettes restantes)</div><div class="value neg">${fmt(t.passifs)} HTG</div></div>
+      <div class="card"><div class="label">Patrimoine net</div><div class="value ${t.patrimoineNet>=0?'pos':'neg'}">${fmt(t.patrimoineNet)} HTG</div></div>
+    </div>
+
+    <div class="section-head">
+      <h2>Évolution du patrimoine</h2>
+      <button class="btn btn-gold" onclick="enregistrerInstantanePatrimoine()">+ Enregistrer un instantané</button>
+    </div>
+    <div class="card"><canvas id="patrimoineChart" height="90"></canvas></div>
+    <p class="small-note" style="margin-top:10px;">Un instantané enregistre la valeur actuelle du patrimoine à la date du jour. Enregistrez-en un chaque mois pour suivre l'évolution.</p>
+  `;
+}
+
+async function enregistrerInstantanePatrimoine(){
+  const t = computeTotals();
+  await foyerCol('patrimoineHistorique').add({
+    date: todayISO(), actifs:t.actifs, passifs:t.passifs, patrimoineNet:t.patrimoineNet
+  });
+}
+
+let patrimoineChartInstance = null;
+function drawPatrimoineChart(){
+  const canvas = document.getElementById('patrimoineChart');
+  if(!canvas) return;
+  const rows = [...(cache.patrimoineHistorique||[])].sort((a,b)=> new Date(a.date) - new Date(b.date));
+  if(patrimoineChartInstance) patrimoineChartInstance.destroy();
+  if(rows.length===0){
+    return;
+  }
+  patrimoineChartInstance = new Chart(canvas.getContext('2d'), {
+    type:'line',
+    data:{ labels: rows.map(r=>r.date), datasets:[
+      {label:'Patrimoine net', data:rows.map(r=>r.patrimoineNet), borderColor:'#C9A227', backgroundColor:'rgba(201,162,39,0.15)', fill:true, tension:0.3}
+    ]},
+    options:{ responsive:true, plugins:{legend:{labels:{color:'#F6F1E7'}}}, scales:{
+      x:{ticks:{color:'#C9C3B4'}, grid:{color:'rgba(246,241,231,0.06)'}},
+      y:{ticks:{color:'#C9C3B4'}, grid:{color:'rgba(246,241,231,0.06)'}}
+    }}
+  });
+}
+
+/* ---------- Vue Budget prévisionnel ---------- */
+function moisActuel(){ return todayISO().slice(0,7); }
+
+function renderBudget(){
+  const mois = window._budgetMoisSelectionne || moisActuel();
+  const budgets = (cache.budgets||[]).filter(b=>b.mois===mois);
+  const depensesDuMois = (cache.depenses||[]).filter(d=>d.date && d.date.slice(0,7)===mois);
+
+  const lignes = budgets.map(b=>{
+    const realise = depensesDuMois.filter(d=>d.categorie===b.categorie).reduce((s,x)=>s+Number(x.montant||0),0);
+    const ecart = b.montantPrevu - realise;
+    return {...b, realise, ecart};
+  });
+  const totalPrevu = lignes.reduce((s,x)=>s+Number(x.montantPrevu||0),0);
+  const totalRealise = lignes.reduce((s,x)=>s+Number(x.realise||0),0);
+
+  return `
+    <div class="section-head">
+      <h2>Budget du mois</h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="month" value="${mois}" onchange="changerMoisBudget(this.value)" style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--navy-2);color:var(--cream);">
+        <button class="btn btn-gold" onclick="openBudgetForm('${mois}')">+ Ligne budgétaire</button>
+      </div>
+    </div>
+    <div class="grid g3">
+      <div class="card"><div class="label">Prévu (total)</div><div class="value neutral">${fmt(totalPrevu)} HTG</div></div>
+      <div class="card"><div class="label">Réalisé (total)</div><div class="value ${totalRealise<=totalPrevu?'pos':'neg'}">${fmt(totalRealise)} HTG</div></div>
+      <div class="card"><div class="label">Écart</div><div class="value ${totalPrevu-totalRealise>=0?'pos':'neg'}">${fmt(totalPrevu-totalRealise)} HTG</div></div>
+    </div>
+    <table class="ledger" style="margin-top:16px;">
+      <thead><tr><th>Catégorie</th><th class="num">Prévu</th><th class="num">Réalisé</th><th class="num">Écart</th><th></th></tr></thead>
+      <tbody>
+      ${lignes.length===0 ? `<tr><td colspan="5" class="empty-row">Aucune ligne budgétaire pour ce mois.</td></tr>` :
+        lignes.map(l=>`<tr>
+          <td>${escapeHtml(l.categorie)}</td><td class="num">${fmt(l.montantPrevu)}</td><td class="num">${fmt(l.realise)}</td>
+          <td class="num" style="color:${l.ecart>=0?'var(--sage-2)':'var(--clay-2)'};">${fmt(l.ecart)}</td>
+          <td style="text-align:right;"><button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="deleteEntry('budgets','${l.id}')">Suppr.</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function changerMoisBudget(val){ window._budgetMoisSelectionne = val; render(); }
+
+function openBudgetForm(mois){
+  openModal(`
+    <h3>Ligne budgétaire — ${mois}</h3>
+    <div class="field"><label>Catégorie</label><input type="text" id="f_categorie" placeholder="Ex: Alimentation"></div>
+    <div class="field"><label>Montant prévu (HTG)</label><input type="number" id="f_montantPrevu" placeholder="0.00"></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitBudget('${mois}')">Enregistrer</button></div>
+  `);
+}
+
+async function submitBudget(mois){
+  if(bloquerSiLectureSeule()) return;
+  const categorie = document.getElementById('f_categorie').value;
+  const montantPrevu = Number(document.getElementById('f_montantPrevu').value||0);
+  await foyerCol('budgets').add({ mois, categorie, montantPrevu });
+  await logAudit('budgets','creation',{description:categorie});
+  closeModal();
+}
+
+/* ---------- Vue Calendrier financier ---------- */
+function renderCalendrier(){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const firstDay = new Date(y,m,1);
+  const startOffset = firstDay.getDay(); // 0=dimanche
+  const daysInMonth = new Date(y,m+1,0).getDate();
+
+  const evenements = collecterEvenements();
+  const parJour = {};
+  evenements.forEach(e=>{
+    const d = new Date(e.date);
+    if(d.getFullYear()===y && d.getMonth()===m){
+      const day = d.getDate();
+      (parJour[day] = parJour[day]||[]).push(e);
+    }
+  });
+
+  let grille = '';
+  for(let i=0;i<startOffset;i++) grille += `<div></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const events = parJour[d]||[];
+    const isToday = d===now.getDate();
+    grille += `<div style="min-height:64px;border:1px solid var(--line);border-radius:8px;padding:6px;background:${isToday?'var(--navy-3)':'var(--navy-2)'};">
+      <div style="font-size:11px;color:${isToday?'var(--gold)':'var(--cream-dim)'};font-weight:600;">${d}</div>
+      ${events.slice(0,2).map(e=>`<div style="font-size:9.5px;margin-top:3px;padding:2px 4px;border-radius:4px;background:${e.type==='neg'?'rgba(181,86,60,.25)':'rgba(201,162,39,.2)'};overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${escapeHtml(e.label)}</div>`).join('')}
+      ${events.length>2?`<div style="font-size:9px;color:var(--cream-dim);margin-top:2px;">+${events.length-2}</div>`:''}
+    </div>`;
+  }
+
+  const upcoming = evenements.filter(e=> new Date(e.date) >= new Date(now.toDateString())).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,10);
+
+  return `
+    <div class="section-head"><h2>${now.toLocaleDateString('fr-FR',{month:'long', year:'numeric'})}</h2></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
+      ${['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'].map(j=>`<div style="text-align:center;font-size:11px;color:var(--cream-dim);">${j}</div>`).join('')}
+      ${grille}
+    </div>
+    <div class="section-head"><h2>Prochaines échéances</h2></div>
+    ${upcoming.length===0 ? `<div class="card empty-row">Aucune échéance à venir.</div>` :
+      `<div class="grid" style="gap:8px;">${upcoming.map(e=>`<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;border-left:3px solid ${e.type==='neg'?'var(--clay)':'var(--gold)'};">
+        <span style="font-size:13px;">${escapeHtml(e.label)}</span><span class="small-note">${new Date(e.date).toLocaleDateString('fr-FR')}</span>
+      </div>`).join('')}</div>`}
+  `;
+}
+
+function collecterEvenements(){
+  const evts = [];
+  (cache.dettes||[]).forEach(d=>{ if(d.echeance && Number(d.montantRestant||0)>0) evts.push({date:d.echeance, label:`Échéance dette : ${d.creancier}`, type:'neg'}); });
+  (cache.effets||[]).forEach(e=>{ if(e.dateAttendue && e.statut==='attendu') evts.push({date:e.dateAttendue, label:`Effet attendu : ${e.description}`, type:'pos'}); });
+  (cache.objectifs||[]).forEach(o=>{ if(o.dateCible) evts.push({date:o.dateCible, label:`Échéance objectif : ${o.nom}`, type:'pos'}); });
+  return evts;
+}
+
+/* ---------- Assistant IA financière (via OpenRouter) ---------- */
+let iaChatHistory = [];
+
+function renderIA(){
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="label">Clé API OpenRouter</div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input type="password" id="orKeyInput" placeholder="sk-or-..." style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--navy);color:var(--cream);">
+        <button class="btn" onclick="sauverCleOpenRouter()">Enregistrer</button>
+      </div>
+      <p class="small-note">Créez une clé gratuite sur openrouter.ai — elle est stockée dans les données privées de votre foyer, jamais visible du super administrateur.</p>
+    </div>
+
+    <div class="section-head"><h2>Questions rapides</h2></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+      ${['Quelle est notre santé financière actuelle ?','Quelle est notre plus grande dépense ce mois-ci ?','Sommes-nous en danger financier ?','Que devrions-nous éviter comme dépenses ?'].map(q=>
+        `<button class="btn btn-ghost" style="font-size:12px;" onclick="poserQuestionIA(${JSON.stringify(q)})">${q}</button>`
+      ).join('')}
+    </div>
+
+    <div class="card" style="min-height:280px; display:flex; flex-direction:column;">
+      <div id="chatBox" style="flex:1; overflow-y:auto; max-height:400px; display:flex; flex-direction:column; gap:12px; padding-right:4px;">
+        ${iaChatHistory.length===0 ? `<div class="empty-row">Posez une question sur vos finances familiales.</div>` :
+          iaChatHistory.map(m=>`<div style="align-self:${m.role==='user'?'flex-end':'flex-start'};max-width:85%;">
+            <div style="background:${m.role==='user'?'var(--navy-3)':'rgba(201,162,39,.12)'};border:1px solid var(--line);border-radius:10px;padding:10px 13px;font-size:13.5px;white-space:pre-wrap;">${escapeHtml(m.content)}</div>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <input type="text" id="iaInput" placeholder="Ex: Pouvons-nous acheter une moto ce mois-ci ?" style="flex:1;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--navy);color:var(--cream);" onkeydown="if(event.key==='Enter') envoyerMessageIA();">
+        <button class="btn btn-gold" onclick="envoyerMessageIA()">Envoyer</button>
+      </div>
+    </div>
+  `;
+}
+
+async function sauverCleOpenRouter(){
+  const key = document.getElementById('orKeyInput').value.trim();
+  if(!key) return;
+  await foyerCol('parametres').doc('ia').set({ openrouterKey: key }, {merge:true});
+  alert('Clé enregistrée.');
+}
+
+function poserQuestionIA(q){ document.getElementById('iaInput').value = q; envoyerMessageIA(); }
+
+function scrollChatToBottom(){ const box = document.getElementById('chatBox'); if(box) box.scrollTop = box.scrollHeight; }
+
+function construireContexteFinancier(){
+  const t = computeTotals();
+  return `Voici les données financières actuelles du foyer (en HTG) :
+- Solde disponible : ${fmt(t.solde)}
+- Argent Époux : ${fmt(t.argentMari)} · Argent Épouse : ${fmt(t.argentFemme)} · Commun : ${fmt(t.argentCommun)}
+- Revenus ce mois : ${fmt(t.revenusMois)} · Dépenses ce mois : ${fmt(t.depensesMois)}
+- Dette totale restante : ${fmt(t.detteRestante)}
+- Dîmes dues : ${fmt(t.dimeDue)} · Dîmes restantes à payer : ${fmt(t.dimeRestante)}
+- Épargne totale : ${fmt(t.epargneTotal)}
+- Investissements (valeur actuelle) : ${fmt(t.investValeurActuelle)}
+- Patrimoine net : ${fmt(t.patrimoineNet)}
+- Nombre d'objectifs financiers actifs : ${cache.objectifs.length}
+- Nombre d'effets à recevoir en attente : ${cache.effets.filter(e=>e.statut==='attendu').length}
+Réponds en français, de façon claire, concise et bienveillante, comme un conseiller financier familial. Base-toi uniquement sur les chiffres fournis ci-dessus, n'invente aucun montant.`;
+}
+
+async function envoyerMessageIA(){
+  const input = document.getElementById('iaInput');
+  const question = input.value.trim();
+  if(!question) return;
+  input.value = '';
+  iaChatHistory.push({role:'user', content:question});
+  render();
+
+  const paramSnap = await foyerCol('parametres').doc('ia').get();
+  const key = paramSnap.exists ? paramSnap.data().openrouterKey : null;
+  if(!key){
+    iaChatHistory.push({role:'assistant', content:"Veuillez d'abord enregistrer votre clé API OpenRouter ci-dessus."});
+    render();
+    return;
+  }
+
+  iaChatHistory.push({role:'assistant', content:'…'});
+  render();
+
+  try{
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+      body: JSON.stringify({
+        model:'anthropic/claude-3.5-sonnet',
+        messages:[
+          {role:'system', content: construireContexteFinancier()},
+          ...iaChatHistory.filter(m=>m.content!=='…').map(m=>({role:m.role, content:m.content}))
+        ]
+      })
+    });
+    const data = await res.json();
+    iaChatHistory.pop();
+    const reponse = data.choices && data.choices[0] ? data.choices[0].message.content : "Erreur : réponse invalide de l'API.";
+    iaChatHistory.push({role:'assistant', content:reponse});
+  }catch(e){
+    iaChatHistory.pop();
+    iaChatHistory.push({role:'assistant', content:"Erreur de connexion à l'assistant IA. Vérifiez votre clé API et votre connexion internet."});
+  }
+  render();
+}
+
+/* ---------- Rapports PDF / Excel ---------- */
+function calculerPeriode(type){
+  const fin = new Date();
+  const debut = new Date();
+  if(type==='jour') { /* aujourd'hui seulement */ }
+  else if(type==='semaine') debut.setDate(fin.getDate()-7);
+  else if(type==='mois') debut.setMonth(fin.getMonth()-1);
+  else if(type==='trimestre') debut.setMonth(fin.getMonth()-3);
+  else if(type==='semestre') debut.setMonth(fin.getMonth()-6);
+  else if(type==='annee') debut.setFullYear(fin.getFullYear()-1);
+  return { debut, fin };
+}
+function dansPeriode(dateStr, debut, fin){
+  if(!dateStr) return false;
+  const d = new Date(dateStr);
+  return d >= debut && d <= fin;
+}
+
+function renderRapports(){
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="label">Période du rapport</div>
+      <select id="periodeRapport" style="margin-top:8px;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--navy);color:var(--cream);">
+        <option value="jour">Journalier</option>
+        <option value="semaine">Hebdomadaire</option>
+        <option value="mois" selected>Mensuel</option>
+        <option value="trimestre">Trimestriel</option>
+        <option value="semestre">Semestriel</option>
+        <option value="annee">Annuel</option>
+      </select>
+    </div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:8px;">Rapport (PDF)</div>
+        <p class="small-note" style="margin-bottom:14px;">Résumé de la période sélectionnée : revenus, dépenses, dettes, dîmes, patrimoine.</p>
+        <button class="btn btn-gold" onclick="genererRapportPDF()">Générer le PDF</button>
+      </div>
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:8px;">Export (Excel)</div>
+        <p class="small-note" style="margin-bottom:14px;">Toutes les transactions de la période dans un classeur Excel.</p>
+        <button class="btn btn-gold" onclick="genererExcel()">Générer le fichier Excel</button>
+      </div>
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:8px;">Imprimer</div>
+        <p class="small-note" style="margin-bottom:14px;">Ouvre une version imprimable du résumé de la période.</p>
+        <button class="btn" onclick="imprimerRapport()">Imprimer le résumé</button>
+      </div>
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:8px;">Partager</div>
+        <p class="small-note" style="margin-bottom:14px;">Partage un résumé texte du foyer (revenus, dépenses, solde) via les applications de votre téléphone.</p>
+        <button class="btn" onclick="partagerRapport()">Partager le résumé</button>
+      </div>
+    </div>
+  `;
+}
+
+function libellePeriode(){
+  const sel = document.getElementById('periodeRapport');
+  const val = sel ? sel.value : 'mois';
+  return {jour:'Journalier', semaine:'Hebdomadaire', mois:'Mensuel', trimestre:'Trimestriel', semestre:'Semestriel', annee:'Annuel'}[val];
+}
+
+function resumeTexte(){
+  const sel = document.getElementById('periodeRapport');
+  const type = sel ? sel.value : 'mois';
+  const { debut, fin } = calculerPeriode(type);
+  const rev = cache.revenus.filter(r=>dansPeriode(r.date, debut, fin)).reduce((s,x)=>s+Number(x.montant||0),0);
+  const dep = cache.depenses.filter(r=>dansPeriode(r.date, debut, fin)).reduce((s,x)=>s+Number(x.montant||0),0);
+  const t = computeTotals();
+  return `PGFF — Résumé (${libellePeriode()})
+Revenus : ${fmt(rev)} HTG
+Dépenses : ${fmt(dep)} HTG
+Solde disponible : ${fmt(t.solde)} HTG
+Dette restante : ${fmt(t.detteRestante)} HTG
+Patrimoine net : ${fmt(t.patrimoineNet)} HTG`;
+}
+
+function imprimerRapport(){
+  const w = window.open('', '_blank');
+  w.document.write(`<html><head><title>PGFF — Rapport</title><style>body{font-family:sans-serif;padding:30px;white-space:pre-wrap;font-size:14px;}</style></head><body>${escapeHtml(resumeTexte())}</body></html>`);
+  w.document.close();
+  w.print();
+}
+
+async function partagerRapport(){
+  const texte = resumeTexte();
+  if(navigator.share){
+    try{ await navigator.share({ title:'PGFF — Résumé financier', text: texte }); }catch(e){ /* annulé */ }
+  }else{
+    await navigator.clipboard.writeText(texte).catch(()=>{});
+    alert('Résumé copié dans le presse-papiers (le partage direct n\'est pas disponible sur ce navigateur).');
+  }
+}
+
+function genererRapportPDF(){
+  const sel = document.getElementById('periodeRapport');
+  const type = sel ? sel.value : 'mois';
+  const { debut, fin } = calculerPeriode(type);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const t = computeTotals();
+  const revPeriode = cache.revenus.filter(r=>dansPeriode(r.date, debut, fin)).reduce((s,x)=>s+Number(x.montant||0),0);
+  const depPeriode = cache.depenses.filter(r=>dansPeriode(r.date, debut, fin)).reduce((s,x)=>s+Number(x.montant||0),0);
+
+  doc.setFontSize(16); doc.text('PGFF — Rapport financier familial', 14, 18);
+  doc.setFontSize(11); doc.text(`Rapport ${libellePeriode().toLowerCase()} · du ${debut.toLocaleDateString('fr-FR')} au ${fin.toLocaleDateString('fr-FR')}`, 14, 26);
+
+  let y = 40;
+  const ligne = (label, val) => { doc.setFontSize(11); doc.text(label, 14, y); doc.text(String(val), 150, y); y += 8; };
+  doc.setFontSize(13); doc.text('Résumé de la période', 14, y); y += 10;
+  ligne('Revenus de la période', fmt(revPeriode)+' HTG');
+  ligne('Dépenses de la période', fmt(depPeriode)+' HTG');
+  ligne('Solde disponible (actuel)', fmt(t.solde)+' HTG');
+  ligne('Dette totale restante', fmt(t.detteRestante)+' HTG');
+  ligne('Dîmes dues', fmt(t.dimeDue)+' HTG');
+  ligne('Dîmes restantes à payer', fmt(t.dimeRestante)+' HTG');
+  ligne('Épargne totale', fmt(t.epargneTotal)+' HTG');
+  ligne('Investissements (valeur actuelle)', fmt(t.investValeurActuelle)+' HTG');
+  ligne('Patrimoine net', fmt(t.patrimoineNet)+' HTG');
+
+  y += 6;
+  doc.setFontSize(13); doc.text('Répartition (actuelle)', 14, y); y += 10;
+  ligne('Argent Époux', fmt(t.argentMari)+' HTG');
+  ligne('Argent Épouse', fmt(t.argentFemme)+' HTG');
+  ligne('Argent Commun', fmt(t.argentCommun)+' HTG');
+
+  doc.save(`PGFF-rapport-${type}-${todayISO()}.pdf`);
+}
+
+function genererExcel(){
+  const sel = document.getElementById('periodeRapport');
+  const type = sel ? sel.value : 'mois';
+  const { debut, fin } = calculerPeriode(type);
+  const wb = XLSX.utils.book_new();
+  const feuille = (nom, data) => { const ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, nom); };
+  feuille('Revenus', cache.revenus.filter(r=>dansPeriode(r.date,debut,fin)).map(r=>({Date:r.date, Description:r.description, Type:r.type, Propriétaire:r.proprietaire, Montant:r.montant})));
+  feuille('Dépenses', cache.depenses.filter(r=>dansPeriode(r.date,debut,fin)).map(r=>({Date:r.date, Description:r.description, Catégorie:r.categorie, 'Payé par':r.payePar, Montant:r.montant})));
+  feuille('Dettes', cache.dettes.map(r=>({Créancier:r.creancier, Description:r.description, 'Montant restant':r.montantRestant, Responsable:r.responsable, Échéance:r.echeance})));
+  feuille('Épargne', cache.epargnes.filter(r=>dansPeriode(r.date,debut,fin)).map(r=>({Date:r.date, Compte:r.compte, Objectif:r.objectif, Responsable:r.responsable, Montant:r.montant})));
+  XLSX.writeFile(wb, `PGFF-export-${type}-${todayISO()}.xlsx`);
+}
+
+/* ---------- Vue Activités & profils des membres ---------- */
+function renderActivites(){
+  const list = cache.activites || [];
+  const parPersonne = { mari: list.find(a=>a.personne==='mari'), femme: list.find(a=>a.personne==='femme') };
+  const t = computeTotals();
+
+  const revenuMoyen = (personne) => {
+    const revs = cache.revenus.filter(r=>r.proprietaire===personne);
+    if(revs.length===0) return 0;
+    const mois = new Set(revs.map(r=>(r.date||'').slice(0,7)));
+    return revs.reduce((s,x)=>s+Number(x.montant||0),0) / Math.max(mois.size,1);
+  };
+
+  const carte = (personne, label) => {
+    const p = parPersonne[personne];
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:start;">
+        <div class="display" style="font-size:16px;font-weight:600;">${label}</div>
+        <button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;" onclick="openActiviteForm('${personne}', ${p?`'${p.id}'`:'null'})">${p?'Modifier':'Renseigner'}</button>
+      </div>
+      ${p ? `
+        <div class="small-note" style="margin-top:10px;">Profession : ${escapeHtml(p.profession||'—')}</div>
+        <div class="small-note">Employeur : ${escapeHtml(p.employeur||'—')}</div>
+        <div class="small-note">Business : ${escapeHtml(p.businessNom||'—')}</div>
+        <div class="small-note">Activités secondaires : ${escapeHtml(p.activitesSecondaires||'—')}</div>
+        <div style="margin-top:12px;"><div class="label">Revenu moyen mensuel (calculé)</div><div class="value neutral" style="font-size:17px;">${fmt(revenuMoyen(personne))} HTG</div></div>
+      ` : `<div class="empty-row">Aucun profil renseigné.</div>`}
+    </div>`;
+  };
+
+  return `<div class="grid g2">${carte('mari','Époux')}${carte('femme','Épouse')}</div>`;
+}
+
+function openActiviteForm(personne, id){
+  const existant = (cache.activites||[]).find(a=>a.id===id) || {};
+  openModal(`
+    <h3>Profil — ${personne==='mari'?'Époux':'Épouse'}</h3>
+    <div class="field"><label>Profession</label><input type="text" id="f_profession" value="${escapeHtml(existant.profession||'')}"></div>
+    <div class="field"><label>Employeur</label><input type="text" id="f_employeur" value="${escapeHtml(existant.employeur||'')}"></div>
+    <div class="field"><label>Nom du business (le cas échéant)</label><input type="text" id="f_businessNom" value="${escapeHtml(existant.businessNom||'')}"></div>
+    <div class="field"><label>Activités secondaires</label><textarea id="f_activitesSecondaires" rows="2">${escapeHtml(existant.activitesSecondaires||'')}</textarea></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-gold" onclick="submitActivite('${personne}', ${id?`'${id}'`:'null'})">Enregistrer</button></div>
+  `);
+}
+
+async function submitActivite(personne, id){
+  const get = i => document.getElementById(i).value;
+  const data = { personne, profession:get('f_profession'), employeur:get('f_employeur'), businessNom:get('f_businessNom'), activitesSecondaires:get('f_activitesSecondaires') };
+  if(id) await foyerCol('activites').doc(id).update(data);
+  else await foyerCol('activites').add(data);
+  closeModal();
+}
+
+/* ---------- Sécurité : historique des connexions + 2FA ---------- */
+async function logConnexion(){
+  try{
+    await foyerCol('connexions').add({
+      uid: currentUser.uid, nom: currentUser.nom,
+      date: firebase.firestore.FieldValue.serverTimestamp(),
+      appareil: navigator.userAgent.slice(0,120)
+    });
+  }catch(e){ /* silencieux */ }
+}
+
+let _historiqueConnexionsCache = [];
+async function chargerHistoriqueConnexions(){
+  const snap = await foyerCol('connexions').orderBy('date','desc').limit(20).get().catch(()=>null);
+  if(!snap) return;
+  _historiqueConnexionsCache = snap.docs.map(d=>d.data());
+  const el = document.getElementById('connexionsList');
+  if(el) el.innerHTML = renderConnexionsRows();
+}
+function renderConnexionsRows(){
+  if(_historiqueConnexionsCache.length===0) return `<tr><td colspan="3" class="empty-row">Aucune connexion enregistrée.</td></tr>`;
+  return _historiqueConnexionsCache.map(c=>{
+    const date = c.date && c.date.toDate ? c.date.toDate().toLocaleString('fr-FR') : '—';
+    return `<tr><td>${escapeHtml(c.nom)}</td><td>${date}</td><td class="small-note">${escapeHtml(c.appareil||'')}</td></tr>`;
+  }).join('');
+}
+
+let confirmationResult = null;
+function renderSecurite(){
+  const mfaEnrolled = auth.currentUser && auth.currentUser.multiFactor && auth.currentUser.multiFactor.enrolledFactors.length > 0;
+  return `
+    <div class="section-head"><h2>Vérification en deux étapes (2FA)</h2></div>
+    <div class="card" style="margin-bottom:20px;">
+      ${mfaEnrolled ? `
+        <div class="small-note" style="color:var(--sage-2);">✓ La vérification en deux étapes est activée sur ce compte.</div>
+      ` : `
+        <p class="small-note" style="margin-bottom:12px;">Ajoutez un numéro de téléphone pour protéger votre compte par un code SMS à chaque connexion sur un nouvel appareil.</p>
+        <div class="field"><label>Numéro de téléphone (format international, ex: +50937123456)</label><input type="text" id="mfaPhone" placeholder="+509..."></div>
+        <button class="btn btn-gold" onclick="demarrerEnrolement2FA()">Envoyer le code de vérification</button>
+        <div id="mfaCodeZone" style="display:none;margin-top:14px;">
+          <div class="field"><label>Code reçu par SMS</label><input type="text" id="mfaCode" placeholder="123456"></div>
+          <button class="btn btn-gold" onclick="confirmerEnrolement2FA()">Valider et activer</button>
+        </div>
+        <p class="small-note" style="margin-top:10px;">Nécessite un projet Firebase sur le plan Blaze (paiement à l'usage) et l'activation de la connexion par téléphone dans Firebase Authentication.</p>
+      `}
+    </div>
+
+    <div class="section-head"><h2>Historique des connexions (foyer)</h2></div>
+    <table class="ledger"><thead><tr><th>Membre</th><th>Date</th><th>Appareil</th></tr></thead>
+    <tbody id="connexionsList"><tr><td colspan="3" class="empty-row">Chargement…</td></tr></tbody></table>
+  `;
+}
+
+function demarrerEnrolement2FA(){
+  const phone = document.getElementById('mfaPhone').value.trim();
+  if(!phone) return;
+  try{
+    window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {size:'invisible'});
+    auth.currentUser.multiFactor.getSession().then(session=>{
+      const phoneInfoOptions = { phoneNumber: phone, session: session };
+      const phoneAuthProvider = new firebase.auth.PhoneAuthProvider();
+      return phoneAuthProvider.verifyPhoneNumber(phoneInfoOptions, window.recaptchaVerifier);
+    }).then(verificationId=>{
+      window._mfaVerificationId = verificationId;
+      document.getElementById('mfaCodeZone').style.display = 'block';
+    }).catch(e=> alert("Erreur d'envoi du code : " + e.message));
+  }catch(e){ alert('Erreur : ' + e.message); }
+}
+
+function confirmerEnrolement2FA(){
+  const code = document.getElementById('mfaCode').value.trim();
+  const cred = firebase.auth.PhoneAuthProvider.credential(window._mfaVerificationId, code);
+  const assertion = firebase.auth.PhoneMultiFactorGenerator.assertion(cred);
+  auth.currentUser.multiFactor.enroll(assertion, 'Téléphone principal')
+    .then(()=>{ alert('Vérification en deux étapes activée.'); render(); })
+    .catch(e=> alert('Code invalide : ' + e.message));
+}
+
+/* ---------- Notifications (centre + préférences e-mail) ---------- */
+function updateNotifBell(){
+  const badge = document.getElementById('notifCount');
+  if(!badge) return;
+  const nonLues = (cache.notifications||[]).filter(n=>!n.lu).length;
+  badge.textContent = nonLues>0 ? nonLues : '';
+}
+
+function toggleNotifPanel(){
+  const panel = document.getElementById('notifPanel');
+  if(panel.style.display==='block'){ panel.style.display='none'; return; }
+  const list = [...(cache.notifications||[])].sort((a,b)=> (b.date&&b.date.seconds||0)-(a.date&&a.date.seconds||0)).slice(0,15);
+  panel.innerHTML = list.length===0 ? `<div class="empty-row" style="padding:14px;">Aucune notification.</div>` :
+    list.map(n=>`<div style="padding:9px 8px;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer;opacity:${n.lu?0.55:1};" onclick="marquerNotifLue('${n.id}')">
+      <div>${escapeHtml(n.titre)}</div><div class="small-note">${n.date && n.date.toDate ? n.date.toDate().toLocaleDateString('fr-FR') : ''}</div>
+    </div>`).join('');
+  panel.style.display='block';
+}
+document.addEventListener('click', (e)=>{
+  const panel = document.getElementById('notifPanel');
+  if(panel && panel.style.display==='block' && !e.target.closest('#notifPanel') && !e.target.closest('button[onclick="toggleNotifPanel()"]')){
+    panel.style.display='none';
+  }
+});
+async function marquerNotifLue(id){ await foyerCol('notifications').doc(id).update({lu:true}); }
+
+function renderNotificationsPage(){
+  const list = [...(cache.notifications||[])].sort((a,b)=> (b.date&&b.date.seconds||0)-(a.date&&a.date.seconds||0));
+  return `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="label">Recevoir les alertes importantes par e-mail</div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input type="email" id="notifEmail" placeholder="votre@email.com" style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--navy);color:var(--cream);">
+        <button class="btn" onclick="sauverEmailNotif()">Activer</button>
+      </div>
+      <p class="small-note">Nécessite l'installation gratuite de l'extension Firebase « Trigger Email » (voir GUIDE-DEMARRAGE.md). Sans elle, les notifications restent visibles uniquement ici, dans l'application.</p>
+    </div>
+    <div class="section-head"><h2>Toutes les notifications</h2></div>
+    ${list.length===0 ? `<div class="card empty-row">Aucune notification pour l'instant.</div>` :
+      `<div class="grid" style="gap:8px;">${list.map(n=>`<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;opacity:${n.lu?0.6:1};">
+        <span style="font-size:13px;">${escapeHtml(n.titre)}</span>
+        <button class="btn btn-ghost" style="padding:3px 9px;font-size:11px;" onclick="marquerNotifLue('${n.id}')">${n.lu?'Lue':'Marquer lue'}</button>
+      </div>`).join('')}</div>`}
+  `;
+}
+
+async function sauverEmailNotif(){
+  const email = document.getElementById('notifEmail').value.trim();
+  if(!email) return;
+  await foyerCol('parametres').doc('notifications').set({ email }, {merge:true});
+  alert('Adresse enregistrée. Installez l\'extension "Trigger Email" pour recevoir les e-mails (voir le guide).');
+}
+
+/* ---------- Génération automatique des notifications + détection d'anomalies ---------- */
+let _notifiedIds = new Set();
+async function genererNotificationsAuto(){
+  const candidates = [];
+
+  (cache.dettes||[]).forEach(d=>{
+    const jr = d.echeance ? joursRestants(d.echeance) : null;
+    if(jr!==null && jr<0 && Number(d.montantRestant||0)>0){
+      candidates.push({ id:'dette-'+d.id, titre:`Dette en retard : ${d.creancier} — ${fmt(d.montantRestant)} HTG` });
+    }
+  });
+  (cache.effets||[]).forEach(e=>{
+    const jr = e.dateAttendue ? joursRestants(e.dateAttendue) : null;
+    if(e.statut==='attendu' && jr!==null && jr>=0 && jr<=3){
+      candidates.push({ id:'effet-'+e.id, titre:`Effet attendu dans ${jr} jour(s) : ${e.description}` });
+    }
+  });
+
+  // Détection d'anomalies : dépense de catégorie très supérieure à la moyenne des 3 derniers mois
+  const now = new Date();
+  const parCategorieMoisCourant = {};
+  const parCategorieMoisPrecedents = {};
+  (cache.depenses||[]).forEach(d=>{
+    if(!d.date || !d.categorie) return;
+    const dt = new Date(d.date);
+    const diffMois = (now.getFullYear()-dt.getFullYear())*12 + (now.getMonth()-dt.getMonth());
+    if(diffMois===0) parCategorieMoisCourant[d.categorie] = (parCategorieMoisCourant[d.categorie]||0) + Number(d.montant||0);
+    else if(diffMois>=1 && diffMois<=3) parCategorieMoisPrecedents[d.categorie] = (parCategorieMoisPrecedents[d.categorie]||[]).concat(Number(d.montant||0));
+  });
+  Object.keys(parCategorieMoisCourant).forEach(cat=>{
+    const historique = parCategorieMoisPrecedents[cat];
+    if(!historique || historique.length===0) return;
+    const moyenne = historique.reduce((a,b)=>a+b,0) / 3;
+    if(moyenne>0 && parCategorieMoisCourant[cat] > moyenne * 1.5 && parCategorieMoisCourant[cat] - moyenne > 500){
+      candidates.push({ id:'anomalie-'+cat+'-'+now.getFullYear()+'-'+now.getMonth(), titre:`Dépense inhabituelle en « ${cat} » ce mois-ci : ${fmt(parCategorieMoisCourant[cat])} HTG (moyenne habituelle : ${fmt(moyenne)} HTG)` });
+    }
+  });
+
+  for(const c of candidates){
+    if(_notifiedIds.has(c.id)) continue;
+    _notifiedIds.add(c.id);
+    const ref = foyerCol('notifications').doc(c.id);
+    const snap = await ref.get().catch(()=>null);
+    if(snap && !snap.exists){
+      await ref.set({ titre:c.titre, lu:false, date: firebase.firestore.FieldValue.serverTimestamp() });
+      envoyerEmailSiActive(c.titre);
+    }
+  }
+}
+
+async function envoyerEmailSiActive(texte){
+  try{
+    const p = await foyerCol('parametres').doc('notifications').get();
+    if(!p.exists || !p.data().email) return;
+    // Compatible avec l'extension Firebase "Trigger Email" (collection "mail")
+    await db.collection('mail').add({
+      to: [p.data().email],
+      message: { subject: 'PGFF — Alerte financière', text: texte }
+    });
+  }catch(e){ /* silencieux */ }
+}
+
+/* ---------- Simulateurs ---------- */
+function renderSimulateurs(){
+  return `
+    <div class="grid g2">
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:12px;">Simulation de prêt</div>
+        <div class="field"><label>Montant emprunté (HTG)</label><input type="number" id="simMontant" placeholder="0.00"></div>
+        <div class="field-row">
+          <div class="field"><label>Taux annuel (%)</label><input type="number" id="simTaux" placeholder="Ex: 12"></div>
+          <div class="field"><label>Durée (mois)</label><input type="number" id="simDuree" placeholder="Ex: 12"></div>
+        </div>
+        <button class="btn btn-gold" onclick="simulerPret()">Calculer</button>
+        <div id="resultatPret" style="margin-top:14px;"></div>
+      </div>
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:12px;">Simulation d'investissement / épargne</div>
+        <div class="field"><label>Montant initial (HTG)</label><input type="number" id="simInitial" placeholder="0.00"></div>
+        <div class="field-row">
+          <div class="field"><label>Contribution mensuelle</label><input type="number" id="simMensuel" placeholder="0.00" value="0"></div>
+          <div class="field"><label>Taux de rendement annuel (%)</label><input type="number" id="simRendement" placeholder="Ex: 6"></div>
+        </div>
+        <div class="field"><label>Durée (années)</label><input type="number" id="simAnnees" placeholder="Ex: 5"></div>
+        <button class="btn btn-gold" onclick="simulerInvestissement()">Calculer</button>
+        <div id="resultatInvest" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <div class="section-head"><h2>Projection d'objectif</h2></div>
+    <div class="card">
+      <div class="field-row">
+        <div class="field"><label>Montant cible (HTG)</label><input type="number" id="simCible" placeholder="0.00"></div>
+        <div class="field"><label>Épargne mensuelle prévue</label><input type="number" id="simEpargneMensuelle" placeholder="0.00"></div>
+      </div>
+      <button class="btn btn-gold" onclick="simulerObjectif()">Calculer le délai</button>
+      <div id="resultatObjectif" style="margin-top:14px;"></div>
+    </div>
+  `;
+}
+
+function simulerMensualiteDette(){
+  const M = Number(document.getElementById('f_montantInitial').value||0);
+  const tauxAnnuel = Number(document.getElementById('simDetteTaux').value||0)/100;
+  const n = Number(document.getElementById('simDetteDuree').value||0);
+  const zone = document.getElementById('resultatSimDette');
+  if(M<=0 || n<=0){ zone.textContent = 'Renseignez le montant initial, le taux et la durée.'; return; }
+  const tauxMensuel = tauxAnnuel/12;
+  const mensualite = tauxMensuel===0 ? M/n : (M * tauxMensuel) / (1 - Math.pow(1+tauxMensuel, -n));
+  zone.innerHTML = `Mensualité estimée : <strong>${fmt(mensualite)} HTG</strong> sur ${n} mois (total : ${fmt(mensualite*n)} HTG)`;
+}
+
+function simulerPret(){
+  const M = Number(document.getElementById('simMontant').value||0);
+  const tauxAnnuel = Number(document.getElementById('simTaux').value||0)/100;
+  const n = Number(document.getElementById('simDuree').value||0);
+  if(M<=0 || n<=0){ document.getElementById('resultatPret').innerHTML = `<div class="small-note">Veuillez remplir tous les champs.</div>`; return; }
+  const tauxMensuel = tauxAnnuel/12;
+  const mensualite = tauxMensuel===0 ? M/n : (M * tauxMensuel) / (1 - Math.pow(1+tauxMensuel, -n));
+  const totalPaye = mensualite * n;
+  document.getElementById('resultatPret').innerHTML = `
+    <div class="label">Mensualité estimée</div><div class="value neutral" style="font-size:19px;">${fmt(mensualite)} HTG</div>
+    <div class="small-note" style="margin-top:8px;">Total remboursé : ${fmt(totalPaye)} HTG · Intérêts totaux : ${fmt(totalPaye-M)} HTG</div>
+  `;
+}
+
+function simulerInvestissement(){
+  const initial = Number(document.getElementById('simInitial').value||0);
+  const mensuel = Number(document.getElementById('simMensuel').value||0);
+  const tauxAnnuel = Number(document.getElementById('simRendement').value||0)/100;
+  const annees = Number(document.getElementById('simAnnees').value||0);
+  if(annees<=0){ document.getElementById('resultatInvest').innerHTML = `<div class="small-note">Veuillez remplir tous les champs.</div>`; return; }
+  const tauxMensuel = tauxAnnuel/12;
+  const n = annees*12;
+  let valeur = initial;
+  for(let i=0;i<n;i++){ valeur = valeur*(1+tauxMensuel) + mensuel; }
+  const totalVerse = initial + mensuel*n;
+  document.getElementById('resultatInvest').innerHTML = `
+    <div class="label">Valeur future estimée</div><div class="value pos" style="font-size:19px;">${fmt(valeur)} HTG</div>
+    <div class="small-note" style="margin-top:8px;">Total versé : ${fmt(totalVerse)} HTG · Gain estimé : ${fmt(valeur-totalVerse)} HTG</div>
+  `;
+}
+
+function simulerObjectif(){
+  const cible = Number(document.getElementById('simCible').value||0);
+  const mensuel = Number(document.getElementById('simEpargneMensuelle').value||0);
+  if(cible<=0 || mensuel<=0){ document.getElementById('resultatObjectif').innerHTML = `<div class="small-note">Veuillez remplir tous les champs.</div>`; return; }
+  const mois = Math.ceil(cible/mensuel);
+  const dateAtteinte = new Date(); dateAtteinte.setMonth(dateAtteinte.getMonth()+mois);
+  document.getElementById('resultatObjectif').innerHTML = `
+    <div class="label">Délai estimé</div><div class="value neutral" style="font-size:19px;">${mois} mois</div>
+    <div class="small-note" style="margin-top:8px;">Objectif atteint vers ${dateAtteinte.toLocaleDateString('fr-FR',{month:'long', year:'numeric'})}</div>
+  `;
+}
+
+/* ---------- Membres du foyer & permissions ---------- */
+let _membresCache = [];
+async function chargerMembres(){
+  const snap = await db.collection('users').where('foyerId','==',currentUser.foyerId).get().catch(e=>{
+    console.warn('Erreur chargement membres (règles Firestore à mettre à jour ?)', e); return null;
+  });
+  _membresCache = snap ? snap.docs.map(d=>Object.assign({id:d.id}, d.data())) : [];
+  const el = document.getElementById('membresListe');
+  if(el) el.innerHTML = renderMembresRows();
+}
+function renderMembresRows(){
+  if(_membresCache.length===0) return `<div class="empty-row">Impossible de charger les membres. Vérifiez que les règles Firestore ont bien été mises à jour (voir GUIDE-DEMARRAGE.md).</div>`;
+  const estAdmin = currentUser.role==='mari' || currentUser.role==='femme';
+  return _membresCache.map(m=>`
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:600;">${escapeHtml(m.nom)} ${m.id===currentUser.uid?'<span class="small-note">(vous)</span>':''}</div>
+          <div class="small-note">${roleLabel(m.role)} · ${escapeHtml(m.email||'')}</div>
+        </div>
+        ${(estAdmin && m.role==='comptable') ? `
+          <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;" onclick="toggleLectureSeule('${m.id}', ${!!m.lectureSeule})">
+            ${m.lectureSeule ? 'Autoriser les modifications' : 'Passer en lecture seule'}
+          </button>` : (m.role==='comptable' ? `<span class="tag ${m.lectureSeule?'commun':'mari'}">${m.lectureSeule?'Lecture seule':'Lecture/écriture'}</span>` : '')}
+      </div>
+    </div>
+  `).join('');
+}
+function renderMembres(){
+  return `
+    <p class="small-note" style="margin-bottom:16px;">Les comptes Époux et Épouse ont un accès complet. Le compte Comptable peut être limité à la lecture seule par l'un des deux conjoints.</p>
+    <div id="membresListe"><div class="empty-row">Chargement…</div></div>
+  `;
+}
+async function toggleLectureSeule(uid, actuel){
+  await db.collection('users').doc(uid).update({ lectureSeule: !actuel });
+  chargerMembres();
+}
+
+/* ---------- Journal d'audit (consultable) ---------- */
+let _journalCache = [];
+async function chargerJournal(){
+  const snap = await foyerCol('journalAudit').orderBy('horodatage','desc').limit(50).get().catch(()=>null);
+  _journalCache = snap ? snap.docs.map(d=>d.data()) : [];
+  const el = document.getElementById('journalTbody');
+  if(el) el.innerHTML = renderJournalRows();
+}
+function renderJournalRows(){
+  if(_journalCache.length===0) return `<tr><td colspan="4" class="empty-row">Aucune activité enregistrée pour l'instant.</td></tr>`;
+  return _journalCache.map(j=>{
+    const date = j.horodatage && j.horodatage.toDate ? j.horodatage.toDate().toLocaleString('fr-FR') : '—';
+    return `<tr><td>${date}</td><td>${escapeHtml(j.module||'')}</td><td>${escapeHtml(j.action||'')}</td><td>${escapeHtml(j.auteurNom||'')} — ${escapeHtml(j.resume||'')}</td></tr>`;
+  }).join('');
+}
+function renderJournal(){
+  return `
+    <p class="small-note" style="margin-bottom:14px;">Historique des 50 dernières actions effectuées dans le foyer (création de revenus, dépenses, dettes, etc.).</p>
+    <table class="ledger"><thead><tr><th>Date</th><th>Module</th><th>Action</th><th>Détail</th></tr></thead>
+    <tbody id="journalTbody"><tr><td colspan="4" class="empty-row">Chargement…</td></tr></tbody></table>
+  `;
+}
+
+/* ---------- Sauvegarde (export / import JSON) ---------- */
+function renderSauvegarde(){
+  return `
+    <div class="grid g2">
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:8px;">Exporter une sauvegarde complète</div>
+        <p class="small-note" style="margin-bottom:14px;">Télécharge toutes les données du foyer (revenus, dépenses, dettes, épargne, etc.) dans un fichier JSON à conserver en lieu sûr.</p>
+        <button class="btn btn-gold" onclick="exporterSauvegardeJSON()">Télécharger la sauvegarde</button>
+      </div>
+      <div class="card">
+        <div class="display" style="font-size:16px;font-weight:600;margin-bottom:8px;">Restaurer une sauvegarde</div>
+        <p class="small-note" style="margin-bottom:14px;">⚠️ La restauration ajoute les données du fichier à celles déjà présentes (elle ne les remplace pas). Vérifiez le fichier avant de l'importer.</p>
+        <input type="file" id="fichierSauvegarde" accept=".json" style="margin-bottom:10px;">
+        <button class="btn" onclick="importerSauvegardeJSON()">Restaurer depuis ce fichier</button>
+      </div>
+    </div>
+    <p class="small-note" style="margin-top:16px;">Firebase conserve vos données de façon durable sur ses serveurs ; cette sauvegarde locale est une protection supplémentaire, notamment avant toute manipulation importante.</p>
+  `;
+}
+
+async function exporterSauvegardeJSON(){
+  const donnees = {};
+  const collections = ['revenus','depenses','dettes','epargnes','dons','effets','sol','objectifs','investissements','budgets','activites'];
+  for(const col of collections) donnees[col] = cache[col] || [];
+  donnees._exportLe = new Date().toISOString();
+  const blob = new Blob([JSON.stringify(donnees, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `PGFF-sauvegarde-${todayISO()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importerSauvegardeJSON(){
+  if(bloquerSiLectureSeule()) return;
+  const fileInput = document.getElementById('fichierSauvegarde');
+  if(!fileInput.files.length){ alert('Veuillez sélectionner un fichier.'); return; }
+  if(!confirm('Confirmez-vous la restauration ? Les données du fichier seront ajoutées à celles déjà présentes.')) return;
+  const texte = await fileInput.files[0].text();
+  let donnees;
+  try{ donnees = JSON.parse(texte); }catch(e){ alert('Fichier invalide.'); return; }
+  for(const col of Object.keys(donnees)){
+    if(col.startsWith('_') || !Array.isArray(donnees[col])) continue;
+    for(const item of donnees[col]){
+      const { id, ...rest } = item;
+      await foyerCol(col).add(rest);
+    }
+  }
+  alert('Restauration terminée.');
+}
+
+/* ---------- Journal d'audit (silencieux, consultable plus tard) ---------- */
+async function logAudit(module, action, data){
+  try{
+    await db.collection('foyers').doc(currentUser.foyerId).collection('journalAudit').add({
+      module, action, auteur: currentUser.uid, auteurNom: currentUser.nom,
+      horodatage: firebase.firestore.FieldValue.serverTimestamp(),
+      resume: (data.description || data.creancier || data.compte || '')
+    });
+  }catch(e){ /* silencieux */ }
+}
+
+// overlay click to close
+document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') closeModal(); });
+</script>
+</body>
+</html>
