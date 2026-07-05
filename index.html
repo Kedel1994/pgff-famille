@@ -501,6 +501,9 @@ function loadFoyersList(){
         </td>
       </tr>`;
     }).join('');
+  }, err=>{
+    const tbody = document.getElementById('foyersTbody');
+    if(tbody) tbody.innerHTML = `<tr><td colspan="5" class="empty-row">Erreur de chargement : ${escapeHtml(err.message)} (code : ${err.code||'inconnu'})</td></tr>`;
   });
 }
 
@@ -518,21 +521,25 @@ function openNewFoyerModal(){
 
 async function createFoyer(){
   const nom = document.getElementById('newFoyerNom').value.trim();
-  if(!nom) return;
+  if(!nom){ alert('Veuillez entrer un nom de foyer avant de continuer.'); return; }
   const token = genToken();
-  const ref = await db.collection('foyers').add({
-    nom: nom,
-    statut: 'actif',
-    tokenInscription: token,
-    dateCreation: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  closeModal();
-  openModal(`
-    <h3>Foyer créé ✓</h3>
-    <p class="small-note" style="margin-bottom:10px;">Transmettez ce code au couple :</p>
-    <div class="mono-badge">${token}</div>
-    <div class="modal-actions"><button class="btn btn-gold" onclick="closeModal()">Fermer</button></div>
-  `);
+  try{
+    const ref = await db.collection('foyers').add({
+      nom: nom,
+      statut: 'actif',
+      tokenInscription: token,
+      dateCreation: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closeModal();
+    openModal(`
+      <h3>Foyer créé ✓</h3>
+      <p class="small-note" style="margin-bottom:10px;">Transmettez ce code au couple :</p>
+      <div class="mono-badge">${token}</div>
+      <div class="modal-actions"><button class="btn btn-gold" onclick="closeModal()">Fermer</button></div>
+    `);
+  }catch(e){
+    alert("Erreur lors de la création du foyer : " + e.message + "\n\nCode : " + (e.code||'inconnu'));
+  }
 }
 
 async function toggleFoyerStatut(id, statutActuel){
