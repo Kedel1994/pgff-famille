@@ -363,23 +363,44 @@ async function doJoin(){
   if(!token || !nom || !email || !pass){ showErr('Veuillez remplir tous les champs.'); return; }
   if(pass.length < 6){ showErr('Le mot de passe doit contenir au moins 6 caractères.'); return; }
 
+  let cred = null;
+  _inscriptionEnCours = true;
   try{
+    // Le compte doit être créé (et donc authentifié) AVANT de pouvoir lire le foyer,
+    // car les règles de sécurité exigent d'être connecté pour cette vérification.
+    cred = await auth.createUserWithEmailAndPassword(email, pass);
+
     const q = await db.collection('foyers').where('tokenInscription','==',token).limit(1).get();
-    if(q.empty){ showErr("Code d'inscription invalide."); return; }
+    if(q.empty){
+      showErr("Code d'inscription invalide.");
+      await cred.user.delete().catch(()=>{});
+      _inscriptionEnCours = false;
+      return;
+    }
     const foyerDoc = q.docs[0];
     const foyerData = foyerDoc.data();
-    if(foyerData.statut !== 'actif'){ showErr('Ce foyer est actuellement suspendu. Contactez le super administrateur.'); return; }
+    if(foyerData.statut !== 'actif'){
+      showErr('Ce foyer est actuellement suspendu. Contactez le super administrateur.');
+      await cred.user.delete().catch(()=>{});
+      _inscriptionEnCours = false;
+      return;
+    }
 
-    const cred = await auth.createUserWithEmailAndPassword(email, pass);
-    await db.collection('users').doc(cred.user.uid).set({
+    const userData = {
       role: role,
       foyerId: foyerDoc.id,
       nom: nom,
       email: email,
       dateCreation: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    // l'écouteur onAuthStateChanged prendra le relais
-  }catch(e){ showErr(traduireErreur(e)); }
+    };
+    await db.collection('users').doc(cred.user.uid).set(userData);
+    _inscriptionEnCours = false;
+    finaliserConnexionFoyer(cred.user.uid, userData);
+  }catch(e){
+    showErr(traduireErreur(e));
+    _inscriptionEnCours = false;
+    if(cred && cred.user){ await cred.user.delete().catch(()=>{}); }
+  }
 }
 
 /* ==========================================================
@@ -431,6 +452,20 @@ function doLogout(){
 /* ==========================================================
    ROUTAGE SELON L'ÉTAT DE CONNEXION
 ========================================================== */
+let _inscriptionEnCours = false;
+
+function finaliserConnexionFoyer(uid, userData){
+  currentUser = Object.assign({uid:uid}, userData);
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('adminApp').style.display='none';
+  document.getElementById('app').classList.add('ready');
+  document.getElementById('whoBadge').textContent = `${currentUser.nom} · ${roleLabel(currentUser.role)}`;
+  buildNav();
+  attachListeners();
+  navigate('dashboard');
+  logConnexion();
+}
+
 auth.onAuthStateChanged(async (user)=>{
   document.getElementById('loader').style.display='none';
   if(!user){
@@ -440,6 +475,10 @@ auth.onAuthStateChanged(async (user)=>{
     document.getElementById('authScreen').style.display='flex';
     return;
   }
+
+  // Une inscription ("rejoindre un foyer") est en cours : doJoin() gère elle-même
+  // la suite (le profil n'existe pas encore à cet instant, c'est normal).
+  if(_inscriptionEnCours) return;
 
   // Est-ce un super admin ?
   const adminSnap = await db.collection('superadmins').doc(user.uid).get();
@@ -458,15 +497,7 @@ auth.onAuthStateChanged(async (user)=>{
     auth.signOut();
     return;
   }
-  currentUser = Object.assign({uid:user.uid}, userSnap.data());
-  document.getElementById('authScreen').style.display='none';
-  document.getElementById('adminApp').style.display='none';
-  document.getElementById('app').classList.add('ready');
-  document.getElementById('whoBadge').textContent = `${currentUser.nom} · ${roleLabel(currentUser.role)}`;
-  buildNav();
-  attachListeners();
-  navigate('dashboard');
-  logConnexion();
+  finaliserConnexionFoyer(user.uid, userSnap.data());
 });
 
 function roleLabel(r){
